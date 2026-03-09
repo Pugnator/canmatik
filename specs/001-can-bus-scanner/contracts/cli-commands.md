@@ -246,6 +246,108 @@ shows `[MOCK]` indicator.
 
 ---
 
+## `canmatik label`
+
+**Purpose**: Manage user-assigned human-readable labels for CAN arbitration IDs.
+Labels persist across sessions in `labels.json` (working directory or
+`--config`-relative path). Supports Constitution Principle VI (Incremental
+Reverse Engineering) and FR-021.
+
+### `canmatik label set <id> <name>`
+
+Assign or update a label for an arbitration ID.
+
+**Usage**:
+```
+canmatik label set <id> <name> [--config <path>]
+```
+
+**Arguments**:
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `<id>` | string | Arbitration ID in hex (e.g., `0x7E8` or `7E8`) |
+| `<name>` | string | Human-readable label (max 64 characters, e.g., "Engine RPM") |
+
+**Output (text)**:
+```
+Label set: 7E8 → Engine RPM
+```
+
+**Output (JSON)**:
+```json
+{"action":"set","id":"7E8","label":"Engine RPM"}
+```
+
+**Exit codes**:
+- `0`: Label saved successfully
+- `1`: Invalid arguments (bad ID format, empty name, name exceeds 64 chars)
+
+### `canmatik label list`
+
+List all stored labels.
+
+**Usage**:
+```
+canmatik label list [--json]
+```
+
+**Output (text)**:
+```
+Labels (3):
+  7E8    Engine RPM
+  7E0    Engine ECU Request
+  3B0    ABS Wheel Speed
+```
+
+**Output (JSON)**:
+```json
+{"labels":[{"id":"7E8","label":"Engine RPM"},{"id":"7E0","label":"Engine ECU Request"},{"id":"3B0","label":"ABS Wheel Speed"}]}
+```
+
+**Exit codes**:
+- `0`: Labels listed (empty list prints "No labels defined." with exit 0)
+- `1`: Invalid arguments
+
+### `canmatik label remove <id>`
+
+Remove a label for a specific arbitration ID.
+
+**Usage**:
+```
+canmatik label remove <id> [--config <path>]
+```
+
+**Output (text)**:
+```
+Label removed: 7E8
+```
+
+**Output (JSON)**:
+```json
+{"action":"remove","id":"7E8"}
+```
+
+**Exit codes**:
+- `0`: Label removed
+- `1`: Invalid arguments, or ID has no label assigned
+
+### Display Integration
+
+When labels are defined, all frame display commands (`monitor`, `record`,
+`replay`, `demo`) append the label in brackets after the arbitration ID:
+
+```
+   +0.000000  7E8 [Engine RPM]  Std  [8]  02 41 0C 1A F8 00 00 00
+```
+
+JSON mode adds a `"label"` field when available:
+```json
+{"ts":0.000000,"ats":0,"id":"7E8","label":"Engine RPM","ext":false,"dlc":8,"data":"02 41 0C 1A F8 00 00 00"}
+```
+
+---
+
 ## Filter Syntax
 
 Filters are specified with the `--filter` flag. Multiple `--filter` flags can be

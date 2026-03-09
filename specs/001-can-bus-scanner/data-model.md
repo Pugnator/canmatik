@@ -105,12 +105,15 @@ A single filter criterion. Multiple rules combine into a filter set.
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
 | `action` | `FilterAction` | `Pass` or `Block` | Whether matching frames are shown or hidden |
-| `id_value` | `uint32_t` | Valid CAN ID range | Arbitration ID to match |
-| `id_mask` | `uint32_t` | Default `0xFFFFFFFF` | Bitmask: `(frame.id & mask) == (id_value & mask)` |
+| `id_value` | `uint32_t` | Valid CAN ID range | Arbitration ID to match (also serves as range start when `is_range == true`) |
+| `id_mask` | `uint32_t` | Default `0xFFFFFFFF` | Bitmask: `(frame.id & mask) == (id_value & mask)`. Ignored when `is_range == true` |
+| `id_range_end` | `uint32_t` | Valid CAN ID, ≥ `id_value` | Upper bound (inclusive) for range filters. Only meaningful when `is_range == true` |
+| `is_range` | `bool` | Default `false` | When true, matches `id_value <= frame.id <= id_range_end` instead of mask logic |
 
 **Validation rules**:
 - `id_mask` of `0xFFFFFFFF` means exact ID match
 - `id_mask` of `0x00000000` means "match all" (no-op filter)
+- When `is_range == true`: `id_range_end` MUST be ≥ `id_value`; `id_mask` is ignored
 
 **Combination logic**: Filters are evaluated in order. Default action (no matching rule) is `Pass` (show all). If any `Block` rule matches, the frame is hidden. If `Pass` rules are present, only frames matching at least one `Pass` rule are shown.
 
@@ -211,6 +214,47 @@ Metadata for a completed or active recording.
 
 ---
 
+### Log File Version Markers
+
+Each log file MUST start with a version marker so readers can detect format mismatches (spec.md edge case: "future-version log file opened").
+
+**ASC format**: First line MUST be a comment containing the version string:
+```
+; CANmatik ASC v1.0
+```
+Readers MUST reject files where the major version exceeds their supported range.
+
+**JSONL format**: First line MUST be a metadata object (not a frame):
+```json
+{"_meta":true,"format":"canmatik-jsonl","version":"1.0","created_utc":"2026-03-08T14:30:00Z"}
+```
+Readers MUST check `version` before parsing frame lines. Unknown major versions trigger a clear version-mismatch error.
+
+---
+
+### Label
+
+A user-assigned human-readable name for a CAN arbitration ID, supporting incremental reverse engineering per Constitution Principle VI and FR-021.
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| `arbitration_id` | `uint32_t` | Valid CAN ID range; unique within store | The arbitration ID to label |
+| `label` | `string` | Non-empty, max 64 characters | Human-readable name (e.g., "Engine RPM") |
+| `created_utc` | `string` | ISO 8601 | When this label was first created |
+
+**Persistence**: Stored as a JSON array in `labels.json` (working directory or `--config`-relative). Example:
+
+```json
+[
+  {"arbitration_id": "0x7E8", "label": "Engine RPM", "created_utc": "2026-03-08T14:30:00Z"},
+  {"arbitration_id": "0x3B0", "label": "ABS Wheel Speed", "created_utc": "2026-03-08T14:32:15Z"}
+]
+```
+
+**State transitions**: Labels are created or updated via `canmatik label set <id> <name>` and deleted via `canmatik label remove <id>`. The store is loaded on startup and saved after each mutation.
+
+---
+
 ### TransportError
 
 Structured error from the transport layer.
@@ -241,7 +285,7 @@ Application configuration. Loaded from file, overridden by CLI flags.
 | `mock_enabled` | `bool` | `false` | Use mock backend |
 | `mock_frame_rate` | `uint32_t` | `100` | Frames/sec in mock mode |
 | `mock_trace_file` | `string` | `""` | Replay this file as mock input |
-| `verbose` | `bool` | `false` | Enable verbose diagnostic output (TinyLog `TraceSeverity::debug`) |
+| `verbose` | `bool` | `false` | Enable verbose diagnostic output (TinyLog `TraceSeverity::verbose`) |
 | `debug` | `bool` | `false` | Enable debug-level file logging (TinyLog `TraceType::file`) |
 | `log_file` | `string` | `"canmatik.log"` | Diagnostic log file path (TinyLog FileTracer) |
 | `log_max_file_size` | `uint32_t` | `10485760` | Max log file size in bytes before rotation (0 = no limit) |

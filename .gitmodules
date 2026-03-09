@@ -1,0 +1,4 @@
+[submodule "third_party/tinylog"]
+	path = third_party/tinylog
+	url = https://github.com/Pugnator/TinyLog.git
+	ignore = dirty

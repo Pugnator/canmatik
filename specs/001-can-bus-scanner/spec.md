@@ -177,7 +177,7 @@ A developer or new user runs the tool in a test/demo mode without a physical J25
 - **USB adapter unplugged during session**: The tool MUST detect the USB disconnection, stop the session gracefully, finalize any active recording, and report the event clearly.
 - **Silent bus (no traffic)**: The tool MUST remain connected and waiting, display a "no frames received" status, and not time out or error.
 - **Extremely busy bus (sustained high frame rate)**: The tool MUST continue logging without dropping frames up to the adapter's throughput limit, and indicate if the adapter reports overflow.
-- **Duplicate recording request**: The tool MUST either queue, replace, or reject a second concurrent recording request with a clear explanation — never silently drop data.
+- **Duplicate recording request**: The tool MUST reject a second concurrent recording request with a clear error message explaining that a recording is already active — never silently drop data.
 - **Disk space exhaustion during recording**: The tool MUST detect the condition, stop recording gracefully, and warn the user with a clear message.
 - **Future-version log file opened**: The tool MUST report a version mismatch clearly rather than silently misinterpreting the data.
 
@@ -231,7 +231,7 @@ A developer or new user runs the tool in a test/demo mode without a physical J25
 - **SC-007**: All error conditions produce a user-facing message that identifies the problem and suggests a corrective action (no silent failures, no raw stack traces).
 - **SC-008**: The test/demo mode exercises all user-facing features identically to a real hardware session.
 - **SC-009**: The tool runs a complete capture session with zero crashes or hangs, recovering gracefully from adapter disconnection or bus errors.
-- **SC-010**: (Aspirational) 90% of users in the target personas can successfully complete a capture-filter-save-review workflow on their first attempt. Measurement method to be defined when usability testing is planned.
+- **SC-010**: (Aspirational — measured post-MVP) 90% of users in the target personas can successfully complete a capture-filter-save-review workflow on their first attempt. Not validated in MVP; measurement method to be defined when usability testing is planned.
 
 ## Safety Behavior
 

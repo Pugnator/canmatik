@@ -81,7 +81,9 @@ src/
 │   ├── session_status.h         # SessionStatus, counters, mode enum
 │   ├── session_status.cpp
 │   ├── capture_sink.h           # ICaptureSync interface (observer)
-│   └── timestamp.h              # Timestamp helpers, rollover handling
+│   ├── timestamp.h              # Timestamp helpers, rollover handling
+│   ├── label_store.h            # LabelStore: user-assigned arb ID labels (FR-021)
+│   └── label_store.cpp          # LabelStore persistence (labels.json)
 │
 ├── transport/                   # Hardware abstraction
 │   ├── device_provider.h        # IDeviceProvider interface
@@ -141,6 +143,7 @@ src/
 │   ├── cmd_replay.cpp           # `canmatik replay`
 │   ├── cmd_status.cpp           # `canmatik status`
 │   ├── cmd_demo.cpp             # `canmatik demo`
+│   ├── cmd_label.cpp            # `canmatik label set/list` (FR-021)
 │   └── formatters.h             # Text / JSON output formatters
 │
 ├── gui/                         # ImGui frontend (Phase 3+)
@@ -164,7 +167,7 @@ src/
 third_party/
 ├── imgui/                       # Git submodule: ocornut/imgui (tagged release)
 ├── tinylog/                     # Git submodule: Pugnator/TinyLog (singleton logger)
-└── CMakeLists.txt               # Builds imgui + tinylog as STATIC libraries (set BUILD_SHARED_LIBS=OFF before add_subdirectory to override TinyLog's default SHARED build)
+└── CMakeLists.txt               # Compiles tinylog/log.cc and imgui sources as STATIC libraries (bypasses TinyLog's hardcoded SHARED default; links zstd statically)
 
 tests/
 ├── unit/
@@ -176,11 +179,14 @@ tests/
 │   ├── test_jsonl_writer.cpp
 │   ├── test_jsonl_reader.cpp
 │   ├── test_session_status.cpp
-│   └── test_config.cpp
+│   ├── test_config.cpp
+│   └── test_label_store.cpp     # LabelStore unit tests (FR-021)
 ├── integration/
 │   ├── test_mock_capture.cpp    # Full capture pipeline with mock backend
 │   ├── test_record_replay.cpp   # Record → save → load → verify roundtrip
-│   └── test_cli_commands.cpp    # CLI subcommand end-to-end
+│   ├── test_cli_commands.cpp    # CLI subcommand end-to-end
+│   ├── test_replay_performance.cpp  # SC-005: 1M-frame search benchmark
+│   └── test_capture_performance.cpp # Latency + memory smoke test
 └── CMakeLists.txt
 
 samples/
@@ -229,6 +235,11 @@ with separate entry points but shared services. Tests mirror the `src/` layout.
                            ▼
                    ┌───────────────┐
                    │ Consumer thread│
+```
+
+**SPSC Queue Specification**: The reader-to-consumer queue is a bounded lock-free single-producer single-consumer ring buffer (capacity: 65 536 frames, ~4 MB). On overflow, the oldest unread frame is dropped and `SessionStatus::dropped` is incremented. This ensures the reader thread never blocks on a slow consumer while providing back-pressure visibility via the dropped counter.
+
+```
                    │               │
                    │ FilterEngine  │──▶ display (CLI formatter / GUI panel)
                    │   .apply()    │
@@ -274,6 +285,8 @@ with separate entry points but shared services. Tests mirror the `src/` layout.
 ```
 
 ## Core Abstractions
+
+> **Note**: The pseudo-code below is illustrative. Authoritative entity definitions, field types, constraints, and validation rules live in [data-model.md](data-model.md). Keep data-model.md as the single source of truth; update these sketches only for high-level orientation.
 
 ### Transport Layer (interfaces)
 
@@ -486,7 +499,7 @@ config. CLI `--gui` flag launches the GUI entry point instead of CLI mode.
 Application-level diagnostic logging is handled by [TinyLog](https://github.com/Pugnator/TinyLog),
 a singleton C++ logger integrated as a git submodule. TinyLog provides:
 
-- **Severity levels**: info, debug, warning, error, critical, fatal
+- **Severity levels**: info, debug, warning, error, verbose, critical
 - **Macros**: `LOG_INFO(...)`, `LOG_DEBUG(...)`, `LOG_CALL(...)`, `LOG_EXCEPTION(...)`
 - **Console tracer**: Colored output on Windows (via `WriteConsoleA` + `SetConsoleTextAttribute`)
 - **File tracer**: Appends to `canmatik.log` with optional rotation and zstd compression
@@ -499,7 +512,7 @@ via TinyLog to the console (stderr-equivalent) and/or a `canmatik.log` file when
 
 **Initialization**: On startup, configure TinyLog based on CLI flags:
 - Default: `TraceType::console` with `TraceSeverity::info` + `TraceSeverity::warning` + `TraceSeverity::error`
-- `--verbose`: Add `TraceSeverity::debug`
+- `--verbose`: Add `TraceSeverity::verbose`
 - `--debug`: Add `TraceType::file` with path `canmatik.log`, enable all severity levels, apply rotation config from `canmatik.json`. Console tracer remains active.
 
 ## Error-Handling Strategy
@@ -624,9 +637,9 @@ see frames streaming to the console.
 - `IDeviceProvider` / `IChannel` interfaces defined
 - `J2534Provider` + `J2534Channel` implemented (Windows, 32-bit)
 - `MockProvider` + `MockChannel` implemented
-- `CanFrame` + `FilterEngine` + `SessionStatus` core types
+- `CanFrame` + `FilterRule`/`FilterAction` data types + `SessionStatus` core types (FilterEngine evaluation logic is Phase 2)
 - `CaptureService` with reader thread + SPSC queue
-- CLI `scan`, `monitor`, `demo` subcommands
+- CLI `scan`, `monitor` subcommands (`demo` delivered in Phase 2 alongside US7)
 - Unit tests for core types; integration test with mock capture
 - CMake build with MinGW, FetchContent for CLI11/Catch2/nlohmann_json
 - Reproducible build documented in README
@@ -640,10 +653,9 @@ troubleshoot adapter problems.
 - `AscWriter` / `JsonlWriter` + `AscReader` / `JsonlReader`
 - `RecordService` (start/stop recording, file naming)
 - `ReplayService` (load, iterate, search, summary)
-- CLI `record`, `replay`, `status` subcommands
-- `--filter` flag with ID/mask syntax
+- CLI `record`, `replay`, `status`, `demo` subcommands
+- `FilterEngine` evaluation logic + `--filter` flag with ID/mask syntax
 - `--json` output mode for CLI
-- Config file loading (`canmatik.json`)
 - Sample captures in `samples/captures/`
 - Roundtrip tests (record → save → load → verify)
 - Log format specification in `docs/log-format-spec.md`

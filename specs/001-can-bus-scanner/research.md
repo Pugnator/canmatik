@@ -653,6 +653,95 @@ void consumer_thread_func(SPSCQueue<CanFrame>& queue,
 
 ---
 
+## Topic 9: TinyLog Logging Library
+
+### Decision
+
+**[TinyLog](https://github.com/Pugnator/TinyLog)** — a singleton C++ diagnostic logger integrated as a git submodule. Handles all application-level diagnostic logging (not CAN frame capture logs).
+
+### Rationale
+
+| Criterion | TinyLog | spdlog | Custom |
+|---|---|---|---|
+| **Singleton pattern** | Built-in (`Log::get()`) | Manual setup | Manual |
+| **C++20 `std::format`** | Yes — uses `std::format` internally | Uses `{fmt}` library (separate dep) | N/A |
+| **Log rotation** | Built-in with configurable `RotationConfig` (max_file_size, max_backup_count, compress) | Built-in via rotating file sink | Manual |
+| **Compression** | zstd compression of rotated files (vendored in repo) | No built-in compression | Manual |
+| **Windows console coloring** | Yes — `WriteConsoleA` + `SetConsoleTextAttribute` | Yes | Manual |
+| **Thread safety** | Mutex-protected writes, `shared_mutex` for configure/log | Thread-safe | Manual |
+| **Build complexity** | Moderate — see below | Low (header-only option) | None |
+| **Dependencies** | zstd (vendored within TinyLog repo) | `{fmt}` (bundled or external) | None |
+
+**Why TinyLog over spdlog**: TinyLog's built-in zstd rotation and singleton pattern match the project's needs without adding another dependency. The project already uses C++20 `std::format`, so TinyLog's use of it is natural. The compact API (`LOG_INFO(...)`, `LOG_DEBUG(...)`, `LOG_CALL(...)`, `LOG_EXCEPTION(...)`) is sufficient for diagnostic output.
+
+### API Surface
+
+**Severity bitmask** (values are powers of 2, combinable via bitwise OR):
+
+| Level | Value | Macro | Use |
+|---|:---:|---|---|
+| `info` | 1 | `LOG_INFO(...)` | Normal operational messages |
+| `warning` | 2 | — (use `Log::get()->log(TraceSeverity::warning, ...)`) | Non-fatal issues |
+| `error` | 4 | — | Recoverable errors |
+| `debug` | 8 | `LOG_DEBUG(...)` | Detailed diagnostic output |
+| `verbose` | 16 | `LOG_CALL(...)` | Function entry/exit tracing |
+| `critical` | 32 | `LOG_EXCEPTION(...)` | Fatal/unrecoverable errors |
+
+**Trace types**: `TraceType::devnull` (discard), `TraceType::console` (colored stdout), `TraceType::file` (file with optional rotation).
+
+**Initialization pattern**:
+
+```cpp
+auto& logger = Log::get();
+logger->addTracer(TraceType::console);  // Always: colored console output
+if (config.debug) {
+    logger->addTracer(TraceType::file);
+    logger->setLogFile("canmatik.log");
+    RotationConfig rot;
+    rot.max_file_size = config.log_max_file_size;
+    rot.max_backup_count = config.log_max_backups;
+    rot.compress = config.log_compress;
+    logger->setRotationConfig(rot);
+}
+```
+
+### Build Integration — Critical Workaround
+
+**Problem**: TinyLog's own `CMakeLists.txt` hardcodes `add_library(tinyLog SHARED ...)`. There is no CMake option or `BUILD_SHARED_LIBS` check to override this. Since the project requires static linking (`-static`) for portable distribution, using TinyLog's CMake directly is not viable.
+
+**Solution**: Bypass TinyLog's CMakeLists.txt entirely. In `third_party/CMakeLists.txt`, compile `tinylog/log.cc` directly as a STATIC library and link zstd statically:
+
+```cmake
+# Build zstd as static library
+add_library(libzstd_static STATIC
+    tinylog/vendor/zstd/lib/common/*.c
+    tinylog/vendor/zstd/lib/compress/*.c
+    tinylog/vendor/zstd/lib/decompress/*.c
+)
+
+# Compile TinyLog as STATIC (bypasses hardcoded SHARED)
+add_library(tinylog STATIC tinylog/log.cc)
+target_link_libraries(tinylog PUBLIC libzstd_static)
+target_include_directories(tinylog PUBLIC tinylog/)
+```
+
+**Note**: Only `log.cc` is needed. `dllmain.cc` is DLL-specific entry point code and must be excluded.
+
+### Submodule Setup
+
+```bash
+git submodule add https://github.com/Pugnator/TinyLog.git third_party/tinylog
+git submodule update --init --recursive  # Fetches vendored zstd
+```
+
+### Alternatives
+
+- **spdlog**: More popular, but adds `{fmt}` dependency and lacks built-in zstd rotation. A valid alternative if TinyLog's build workaround proves too fragile.
+- **Boost.Log**: Heavy dependency, overkill for diagnostic logging.
+- **Custom logger**: Would require reimplementing rotation, coloring, and thread safety. Not justified when TinyLog covers the need.
+
+---
+
 ## Summary of Decisions
 
 | # | Topic | Decision | Key Rationale |
@@ -665,3 +754,4 @@ void consumer_thread_func(SPSCQueue<CanFrame>& queue,
 | 6 | Timestamp Strategy | **Dual: adapter µs + host steady_clock** | Adapter for inter-frame precision, host for wall-clock correlation and fallback |
 | 7 | Log Format | **Vector ASC (text) + JSONL (structured)** | ASC is universally supported by CAN tools; JSONL is streamable and crash-safe |
 | 8 | Threading Model | **Reader thread + SPSC queue + condition_variable** | Natural producer-consumer; MinGW winpthreads enables full C++20 threading |
+| 9 | Logging Library | **TinyLog** (git submodule, compiled as STATIC) | Singleton logger with zstd rotation; C++20 `std::format`; bypasses hardcoded SHARED via direct `log.cc` compilation |
