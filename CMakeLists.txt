@@ -208,6 +208,25 @@ target_link_libraries(canmatik PRIVATE
 )
 
 # ---------------------------------------------------------------------------
+# Fake J2534 DLL (sniff tool behavior / future ECU simulation)
+# ---------------------------------------------------------------------------
+add_library(fake_j2534 SHARED
+    src/fake_j2534/fake_j2534.cpp
+    src/fake_j2534/fake_j2534.def
+)
+
+target_compile_definitions(fake_j2534 PRIVATE _WIN32_WINNT=0x0600)
+set_target_properties(fake_j2534 PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "fake_j2534"
+)
+
+# Resolve __stdcall decorated names to .def undecorated names
+if(MINGW)
+    target_link_options(fake_j2534 PRIVATE "-Wl,--enable-stdcall-fixup")
+endif()
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 enable_testing()
