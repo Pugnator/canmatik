@@ -1,0 +1,17 @@
+; fake_j2534.def — Explicit export names for J2534 Pass-Thru API
+; Ensures tools see clean undecorated names (no @N stdcall mangling).
+LIBRARY fake_j2534
+EXPORTS
+    PassThruOpen
+    PassThruClose
+    PassThruConnect
+    PassThruDisconnect
+    PassThruReadMsgs
+    PassThruWriteMsgs
+    PassThruStartMsgFilter
+    PassThruStopMsgFilter
+    PassThruStartPeriodicMsg
+    PassThruStopPeriodicMsg
+    PassThruIoctl
+    PassThruReadVersion
+    PassThruGetLastError

@@ -1,0 +1,12 @@
+{"_meta":true,"format":"canmatik-jsonl","version":"1.0","tool":"CANmatik","adapter":"MockAdapter","bitrate":500000,"created_utc":"2025-01-01T00:00:00Z"}
+{"ts":0.000000,"ats":0,"id":"7E0","ext":false,"dlc":8,"data":"02 01 00 00 00 00 00 00"}
+{"ts":0.016000,"ats":16000,"id":"7E8","ext":false,"dlc":8,"data":"06 41 00 BE 3E B8 13 00"}
+{"ts":0.100000,"ats":100000,"id":"100","ext":false,"dlc":2,"data":"A0 01"}
+{"ts":0.200000,"ats":200000,"id":"200","ext":false,"dlc":4,"data":"DE AD BE EF"}
+{"ts":0.300000,"ats":300000,"id":"300","ext":false,"dlc":3,"data":"01 02 03"}
+{"ts":0.400000,"ats":400000,"id":"400","ext":false,"dlc":8,"data":"10 20 30 40 50 60 70 80"}
+{"ts":0.500000,"ats":500000,"id":"7E0","ext":false,"dlc":8,"data":"02 01 0C 00 00 00 00 00"}
+{"ts":0.516000,"ats":516000,"id":"7E8","ext":false,"dlc":8,"data":"04 41 0C 1A F8 00 00 00"}
+{"ts":1.000000,"ats":1000000,"id":"100","ext":false,"dlc":2,"data":"A0 02"}
+{"ts":1.100000,"ats":1100000,"id":"3B0","ext":false,"dlc":5,"data":"55 AA 55 AA 55"}
+{"_meta":true,"type":"session_summary","frames":10,"errors":0,"dropped":0,"duration":1.1}

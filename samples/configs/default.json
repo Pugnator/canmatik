@@ -1,0 +1,25 @@
+{
+  "provider": "",
+  "bitrate": 500000,
+  "mode": "passive",
+  "filters": [],
+  "output": {
+    "format": "asc",
+    "directory": "./captures"
+  },
+  "gui": {
+    "launch": false,
+    "font_size": 14
+  },
+  "mock": {
+    "enabled": false,
+    "frame_rate": 100,
+    "trace_file": ""
+  },
+  "logging": {
+    "file": "canmatik.log",
+    "max_file_size": 10485760,
+    "max_backups": 5,
+    "compress": true
+  }
+}
