@@ -1,0 +1,16 @@
+# CANmatik OBD-II: Engine-only monitoring at 5 Hz
+# Focused on core engine parameters for diagnostics
+
+interval: "5hz"
+
+addressing:
+  mode: functional
+  tx_id: 0x7DF
+  rx_base: 0x7E8
+
+groups:
+  - name: engine
+    pids:
+      - id: 0x0C   # Engine RPM
+      - id: 0x05   # Coolant Temperature
+      - id: 0x04   # Calculated Engine Load

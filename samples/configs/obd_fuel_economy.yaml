@@ -1,0 +1,16 @@
+# CANmatik OBD-II: Fuel economy monitoring at 1 Hz
+# Track speed, airflow, and fuel level for economy analysis
+
+interval: "1s"
+
+addressing:
+  mode: functional
+  tx_id: 0x7DF
+  rx_base: 0x7E8
+
+groups:
+  - name: fuel_economy
+    pids:
+      - id: 0x0D   # Vehicle Speed
+      - id: 0x10   # MAF Air Flow Rate
+      - id: 0x2F   # Fuel Tank Level

@@ -17,11 +17,21 @@ add_executable(canmatik_unit_tests
     unit/test_jsonl_writer.cpp
     unit/test_jsonl_reader.cpp
     unit/test_label_store.cpp
+    unit/test_interval_spec.cpp
+    unit/test_obd_config.cpp
+    unit/test_pid_table.cpp
+    unit/test_pid_decoder.cpp
+    unit/test_dtc_decoder.cpp
+    unit/test_obd_request.cpp
+    unit/test_obd_response.cpp
+    unit/test_query_scheduler.cpp
 )
 
 target_link_libraries(canmatik_unit_tests PRIVATE
     canmatik_core
     canmatik_logging
+    canmatik_obd
+    canmatik_mock
     Catch2::Catch2WithMain
 )
 
@@ -37,6 +47,7 @@ add_executable(canmatik_integration_tests
     integration/test_edge_cases.cpp
     integration/test_replay_performance.cpp
     integration/test_capture_performance.cpp
+    integration/test_obd_session.cpp
 )
 
 target_link_libraries(canmatik_integration_tests PRIVATE
@@ -44,6 +55,7 @@ target_link_libraries(canmatik_integration_tests PRIVATE
     canmatik_mock
     canmatik_services
     canmatik_logging
+    canmatik_obd
     Catch2::Catch2WithMain
 )
 

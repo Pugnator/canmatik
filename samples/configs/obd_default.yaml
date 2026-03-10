@@ -1,0 +1,26 @@
+# CANmatik OBD-II default configuration
+# Generated automatically - edit to customize PID selection
+
+interval: "1s"
+
+addressing:
+  mode: functional
+  tx_id: 0x7DF
+  rx_base: 0x7E8
+
+groups:
+  - name: engine_basics
+    pids:
+      - id: 0x0C   # Engine RPM
+      - id: 0x0D   # Vehicle Speed
+      - id: 0x05   # Coolant Temperature
+      - id: 0x04   # Calculated Engine Load
+      - id: 0x11   # Throttle Position
+
+  - name: fuel_system
+    interval: "2s"
+    pids:
+      - id: 0x06   # Short Term Fuel Trim (Bank 1)
+      - id: 0x07   # Long Term Fuel Trim (Bank 1)
+      - id: 0x10   # MAF Air Flow Rate
+      - id: 0x0F   # Intake Air Temperature

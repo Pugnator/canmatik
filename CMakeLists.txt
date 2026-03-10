@@ -3,6 +3,13 @@
 # ===========================================================================
 cmake_minimum_required(VERSION 3.24)
 
+# Allow older cmake_minimum_required in vendored/FetchContent dependencies (CMake 4.0 compat)
+if(POLICY CMP0077)
+    cmake_policy(SET CMP0077 NEW)
+endif()
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE STRING "" FORCE)
+
 project(canmatik
     VERSION   0.1.0
     LANGUAGES C CXX
@@ -75,7 +82,19 @@ FetchContent_Declare(
     GIT_TAG        v3.7.1
 )
 
-FetchContent_MakeAvailable(CLI11 nlohmann_json Catch2)
+# yaml-cpp — YAML parser (for OBD-II config)
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG        0.8.0
+    OVERRIDE_FIND_PACKAGE
+)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_INSTALL OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(CLI11 nlohmann_json Catch2 yaml-cpp)
 
 # ---------------------------------------------------------------------------
 # Third-party vendored libraries (TinyLog, future ImGui)
@@ -178,6 +197,31 @@ target_link_libraries(canmatik_logging PUBLIC
 )
 
 # ---------------------------------------------------------------------------
+# OBD-II diagnostics library (J1979 modes, PID decoding, YAML config)
+# ---------------------------------------------------------------------------
+add_library(canmatik_obd STATIC
+    src/obd/interval_spec.cpp
+    src/obd/obd_config.cpp
+    src/obd/pid_table.cpp
+    src/obd/pid_decoder.cpp
+    src/obd/dtc_decoder.cpp
+    src/obd/obd_response.cpp
+    src/obd/obd_session.cpp
+    src/obd/query_scheduler.cpp
+)
+
+target_include_directories(canmatik_obd PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(canmatik_obd PUBLIC
+    canmatik_core
+    yaml-cpp
+)
+
+target_compile_features(canmatik_obd PUBLIC cxx_std_20)
+
+# ---------------------------------------------------------------------------
 # CLI executable
 # ---------------------------------------------------------------------------
 add_executable(canmatik
@@ -190,6 +234,7 @@ add_executable(canmatik
     src/cli/cmd_status.cpp
     src/cli/cmd_demo.cpp
     src/cli/cmd_label.cpp
+    src/cli/cmd_obd.cpp
     src/cli/canmatik.rc
 )
 
@@ -203,6 +248,7 @@ target_link_libraries(canmatik PRIVATE
     canmatik_mock
     canmatik_services
     canmatik_logging
+    canmatik_obd
     CLI11::CLI11
     tinylog
 )

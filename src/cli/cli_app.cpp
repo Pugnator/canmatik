@@ -24,6 +24,7 @@ void register_replay_command(CLI::App& app, const GlobalOptions& globals, const 
 void register_status_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 void register_demo_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 void register_label_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
+void register_obd_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 
 // Dispatch functions (implemented in cmd_*.cpp)
 int dispatch_scan(CLI::App& sub, const GlobalOptions& globals, const Config& config);
@@ -33,6 +34,7 @@ int dispatch_replay(CLI::App& sub, const GlobalOptions& globals, const Config& c
 int dispatch_status(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 int dispatch_demo(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 int dispatch_label(CLI::App& sub, const GlobalOptions& globals, const Config& config);
+int dispatch_obd(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 
 // ---------------------------------------------------------------------------
 // build_cli
@@ -90,6 +92,24 @@ std::unique_ptr<CLI::App> build_cli(GlobalOptions& globals) {
     label_remove->add_option("id", "Arbitration ID (hex)")->required();
     label->add_subcommand("list", "List all labels");
     label->require_subcommand(1);
+
+    // OBD-II diagnostics
+    auto* obd = app->add_subcommand("obd", "OBD-II diagnostics (J1979 modes, PID decoding, DTCs)");
+    obd->add_option("--bitrate", "CAN bitrate in bps")->default_val("500000");
+    obd->require_subcommand(1);
+
+    auto* obd_query = obd->add_subcommand("query", "Query supported PIDs from ECU");
+    obd_query->add_flag("--supported", "List all supported PIDs");
+
+    auto* obd_stream = obd->add_subcommand("stream", "Stream decoded PID values in real time");
+    obd_stream->add_option("--obd-config", "Path to OBD YAML config file");
+    obd_stream->add_option("--interval", "Query interval override (e.g., 500ms, 1s, 2hz)");
+
+    auto* obd_dtc = obd->add_subcommand("dtc", "Read or clear diagnostic trouble codes");
+    obd_dtc->add_flag("--clear", "Clear stored DTCs (Mode $04)");
+    obd_dtc->add_flag("--force", "Skip confirmation for --clear");
+
+    obd->add_subcommand("info", "Read vehicle info (VIN, ECU name, calibration)");
 
     return app;
 }
@@ -179,6 +199,7 @@ int dispatch(CLI::App& app, const GlobalOptions& globals, const Config& config) 
             if (name == "status")  return dispatch_status(*sub, globals, config);
             if (name == "demo")    return dispatch_demo(*sub, globals, config);
             if (name == "label")   return dispatch_label(*sub, globals, config);
+            if (name == "obd")     return dispatch_obd(*sub, globals, config);
         }
     }
 

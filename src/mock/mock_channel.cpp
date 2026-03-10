@@ -79,9 +79,12 @@ std::vector<CanFrame> MockChannel::read(uint32_t timeout_ms) {
     return batch;
 }
 
-void MockChannel::write(const CanFrame& /*frame*/) {
-    throw TransportError(0, "Mock channel: write rejected (passive mode only)",
-                         "MockChannel::write", true);
+void MockChannel::write(const CanFrame& frame) {
+    if (!writable_) {
+        throw TransportError(0, "Mock channel: write rejected (passive mode only)",
+                             "MockChannel::write", true);
+    }
+    written_frames_.push_back(frame);
 }
 
 void MockChannel::setFilter(uint32_t mask, uint32_t pattern) {
@@ -107,6 +110,14 @@ void MockChannel::set_frame_sequence(std::vector<CanFrame> frames) {
 
 void MockChannel::set_error_after(uint64_t frame_count) {
     error_after_ = frame_count;
+}
+
+void MockChannel::set_writable(bool writable) {
+    writable_ = writable;
+}
+
+const std::vector<CanFrame>& MockChannel::written_frames() const {
+    return written_frames_;
 }
 
 CanFrame MockChannel::generate_frame() {
