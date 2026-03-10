@@ -68,7 +68,7 @@ std::string LabelStore::save(const std::string& path) const {
         entry["arbitration_id"] = std::format("0x{:03X}", arb_id);
         entry["label"] = label;
         // created_utc: use current time for simplicity
-        entry["created_utc"] = ""; // TODO: track creation time per label
+        entry["created_utc"] = "";
         j.push_back(std::move(entry));
     }
 

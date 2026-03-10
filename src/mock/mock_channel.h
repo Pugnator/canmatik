@@ -35,7 +35,7 @@ public:
     /// Configure error injection: throw TransportError after N frames.
     void set_error_after(uint64_t frame_count);
 
-    /// Enable write acceptance (default: reject writes with TransportError).
+    /// Enable or disable write acceptance (default: writable).
     void set_writable(bool writable);
 
     /// Get frames written to the channel (for test verification).
@@ -56,7 +56,7 @@ private:
     uint32_t filter_mask_ = 0;
     uint32_t filter_pattern_ = 0;
     bool has_filter_ = false;
-    bool writable_ = false;
+    bool writable_ = true;
     std::vector<CanFrame> written_frames_;
 };
 

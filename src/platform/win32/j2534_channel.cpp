@@ -146,13 +146,43 @@ std::vector<CanFrame> J2534Channel::read(uint32_t timeout_ms) {
 }
 
 void J2534Channel::write(const CanFrame& frame) {
-    // Defense in depth: reject writes in passive mode (T073, Constitution I)
-    throw TransportError(0,
-        "Cannot write in Passive mode — active mode not supported in MVP",
-        "J2534Channel::write", false);
+    if (!open_) {
+        throw TransportError(0, "Cannot write — channel not open",
+                             "J2534Channel::write", false);
+    }
 
-    // Future active-mode implementation would go here:
-    // (void)frame; // suppress unused warning
+    // Build PASSTHRU_MSG from CanFrame (inverse of convert_msg)
+    j2534::PASSTHRU_MSG msg = {};
+    msg.ProtocolID = j2534::PROTOCOL_CAN;
+    msg.TxFlags = (frame.type == FrameType::Extended) ? j2534::CAN_29BIT_ID : 0;
+
+    // J2534 CAN: Data[0..3] = arbitration ID (big-endian), Data[4..] = payload
+    msg.Data[0] = static_cast<unsigned char>((frame.arbitration_id >> 24) & 0xFF);
+    msg.Data[1] = static_cast<unsigned char>((frame.arbitration_id >> 16) & 0xFF);
+    msg.Data[2] = static_cast<unsigned char>((frame.arbitration_id >>  8) & 0xFF);
+    msg.Data[3] = static_cast<unsigned char>((frame.arbitration_id >>  0) & 0xFF);
+
+    uint8_t payload_len = (frame.dlc <= 8) ? frame.dlc : 8;
+    for (uint8_t i = 0; i < payload_len; ++i) {
+        msg.Data[4 + i] = frame.data[i];
+    }
+    msg.DataSize = 4 + payload_len;
+
+    unsigned long num_msgs = 1;
+    constexpr unsigned long kWriteTimeoutMs = 100;
+
+    LOG_DEBUG("Calling PassThruWriteMsgs(channel={}, id=0x{:X}, dlc={}, timeout={}ms)",
+              channel_id_, frame.arbitration_id, payload_len, kWriteTimeoutMs);
+    long ret = dll_.PassThruWriteMsgs(channel_id_, &msg, &num_msgs, kWriteTimeoutMs);
+    LOG_DEBUG("PassThruWriteMsgs returned {} ({}), num_msgs={}",
+              ret, j2534::status_to_string(ret), num_msgs);
+
+    if (ret != j2534::STATUS_NOERROR) {
+        throw TransportError(static_cast<int32_t>(ret),
+                             "PassThruWriteMsgs failed: " + get_last_error(),
+                             "PassThruWriteMsgs",
+                             ret == j2534::ERR_TIMEOUT || ret == j2534::ERR_BUFFER_FULL);
+    }
 }
 
 void J2534Channel::setFilter(uint32_t mask, uint32_t pattern) {

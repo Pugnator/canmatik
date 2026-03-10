@@ -27,7 +27,7 @@ public:
     /// @return Vector of received frames (may be empty on timeout).
     [[nodiscard]] virtual std::vector<CanFrame> read(uint32_t timeout_ms) = 0;
 
-    /// Write a frame to the bus. GATED: throws TransportError if mode is Passive.
+    /// Write a frame to the bus.
     virtual void write(const CanFrame& frame) = 0;
 
     /// Set a hardware-level CAN filter (mask/pattern).

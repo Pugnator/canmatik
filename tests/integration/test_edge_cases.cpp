@@ -141,8 +141,9 @@ TEST_CASE("T072: CaptureService on silent bus — no error, no timeout", "[edge]
 // T073: IChannel::write() throws in passive mode
 // ---------------------------------------------------------------------------
 
-TEST_CASE("T073: MockChannel::write() throws TransportError", "[edge][channel]") {
+TEST_CASE("T073: MockChannel::write() throws TransportError in passive mode", "[edge][channel]") {
     MockChannel channel;
+    channel.set_writable(false);
     channel.open(500000);
 
     CanFrame frame{};
@@ -156,6 +157,7 @@ TEST_CASE("T073: MockChannel::write() throws TransportError", "[edge][channel]")
 
 TEST_CASE("T073: MockChannel::write() error message is clear", "[edge][channel]") {
     MockChannel channel;
+    channel.set_writable(false);
     channel.open(500000);
 
     CanFrame frame{};

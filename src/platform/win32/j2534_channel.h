@@ -34,7 +34,6 @@ public:
     [[nodiscard]] std::vector<CanFrame> read(uint32_t timeout_ms) override;
 
     /// Write a CAN frame (PassThruWriteMsgs).
-    /// THROWS TransportError if OperatingMode is Passive (defense in depth).
     void write(const CanFrame& frame) override;
 
     /// Set a hardware pass filter (PassThruStartMsgFilter).

@@ -105,18 +105,15 @@ The loader is **move-only** (no copy). Owned by `J2534Provider`.
 - **ID extraction**: from `Data[0..3]` (big-endian), masked to 11 or
   29 bits based on `RxStatus & CAN_29BIT_ID`
 
-### Write Guard
+### Write
 
-`write()` unconditionally throws `TransportError`:
+`write()` builds a `PASSTHRU_MSG` from a `CanFrame` (inverse of the read
+conversion) and calls `PassThruWriteMsgs` with a 100ms timeout:
 
-```cpp
-throw TransportError(0,
-    "Cannot write in Passive mode — active mode not supported in MVP",
-    "J2534Channel::write", false);
-```
-
-No J2534 write call is ever made. This is a defense-in-depth safety
-control.
+- `Data[0..3]` = arbitration ID (big-endian)
+- `Data[4..]` = payload (up to 8 bytes, classic CAN)
+- `TxFlags` = `CAN_29BIT_ID` for extended frames, `0` for standard
+- Timeout and buffer-full errors are marked recoverable; all others are fatal
 
 ### Hardware Filtering
 

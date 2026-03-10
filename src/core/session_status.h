@@ -15,8 +15,8 @@ namespace canmatik {
 
 /// Determines what operations are permitted on the channel.
 enum class OperatingMode : uint8_t {
-    Passive      = 0, ///< Receive only (default, MVP)
-    ActiveQuery  = 1, ///< Diagnostic request/response (future)
+    Passive      = 0, ///< Receive only (default)
+    ActiveQuery  = 1, ///< Diagnostic request/response (OBD-II)
     ActiveInject = 2, ///< Arbitrary frame transmission (future)
 };
 
