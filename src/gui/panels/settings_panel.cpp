@@ -33,7 +33,7 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
     // ----- Connection section -----
     ImGui::SeparatorText("Connection");
 
-    // Provider scan + dropdown
+    // J2534 interface scan + dropdown
     static std::vector<std::string> provider_names;
     static int provider_idx = -1;
     static bool scanned_once = false;
@@ -46,7 +46,7 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
     }
 
     ImGui::SetNextItemWidth(260);
-    if (ImGui::BeginCombo("Provider", provider_idx >= 0 && provider_idx < static_cast<int>(provider_names.size())
+    if (ImGui::BeginCombo("J2534 Interface", (provider_idx >= 0 && provider_idx < static_cast<int>(provider_names.size()))
                                         ? provider_names[provider_idx].c_str() : "<none>")) {
         for (int i = 0; i < static_cast<int>(provider_names.size()); ++i) {
             bool selected = (i == provider_idx);

@@ -11,9 +11,9 @@ set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE STRING "" FORCE)
 
 project(canmatik
-    VERSION   0.1.0
+    VERSION   0.2.0
     LANGUAGES C CXX
-    DESCRIPTION "Open-source CAN bus scanner and logger for J2534 Pass-Thru interfaces"
+    DESCRIPTION "Open-source CAN bus scanner, recorder and anlyzer for J2534 Pass-Thru interfaces"
 )
 
 # ---------------------------------------------------------------------------

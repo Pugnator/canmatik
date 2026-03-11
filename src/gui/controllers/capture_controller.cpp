@@ -22,9 +22,9 @@ std::string CaptureController::connect(const std::string& provider_name,
 
         auto providers = session_.scan();
         if (providers.empty())
-            return "No J2534 providers found.";
+            return "No J2534 interfaces found.";
 
-        // Pick matching provider or first available
+        // Pick matching interface or first available
         const DeviceInfo* sel = nullptr;
         if (!provider_name.empty()) {
             for (auto& p : providers) {
@@ -32,7 +32,7 @@ std::string CaptureController::connect(const std::string& provider_name,
                     sel = &p; break;
                 }
             }
-            if (!sel) return std::format("No provider matching '{}'.", provider_name);
+            if (!sel) return std::format("No interface matching '{}'.", provider_name);
         } else {
             sel = &providers[0];
         }
