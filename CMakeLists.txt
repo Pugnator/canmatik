@@ -96,6 +96,30 @@ set(YAML_CPP_INSTALL OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(CLI11 nlohmann_json Catch2 yaml-cpp)
 
+# ImGui — immediate-mode GUI library (Win32 + OpenGL3 backend)
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG        v1.91.8
+)
+FetchContent_MakeAvailable(imgui)
+
+add_library(imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(imgui PUBLIC
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+target_link_libraries(imgui PUBLIC opengl32 gdi32 dwmapi)
+target_compile_options(imgui PRIVATE -w)
+
 # ---------------------------------------------------------------------------
 # Third-party vendored libraries (TinyLog, future ImGui)
 # ---------------------------------------------------------------------------
@@ -235,6 +259,7 @@ add_executable(canmatik
     src/cli/cmd_demo.cpp
     src/cli/cmd_label.cpp
     src/cli/cmd_obd.cpp
+    src/cli/cmd_sniff.cpp
     src/cli/canmatik.rc
 )
 
@@ -271,6 +296,46 @@ set_target_properties(fake_j2534 PROPERTIES
 if(MINGW)
     target_link_options(fake_j2534 PRIVATE "-Wl,--enable-stdcall-fixup")
 endif()
+
+# ---------------------------------------------------------------------------
+# GUI executable (ImGui + Win32/OpenGL3)
+# ---------------------------------------------------------------------------
+add_executable(canmatik_gui WIN32
+    src/gui/gui_main.cpp
+    src/gui/gui_app.cpp
+    src/gui/canmatik_gui.rc
+    src/gui/gui_settings.cpp
+    src/gui/frame_collector.cpp
+    src/gui/controllers/capture_controller.cpp
+    src/gui/controllers/replay_controller.cpp
+    src/gui/controllers/obd_controller.cpp
+    src/gui/panels/can_messages_panel.cpp
+    src/gui/panels/obd_data_panel.cpp
+    src/gui/panels/dtc_panel.cpp
+    src/gui/panels/settings_panel.cpp
+    src/gui/panels/watchdog_panel.cpp
+    src/gui/panels/status_bar.cpp
+    src/gui/panels/menu_bar.cpp
+    src/gui/widgets/playback_toolbar.cpp
+)
+
+target_include_directories(canmatik_gui PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(canmatik_gui PRIVATE
+    canmatik_core
+    canmatik_platform
+    canmatik_mock
+    canmatik_services
+    canmatik_logging
+    canmatik_obd
+    imgui
+    tinylog
+    nlohmann_json::nlohmann_json
+    opengl32
+    comdlg32
+)
 
 # ---------------------------------------------------------------------------
 # Tests

@@ -9,6 +9,7 @@
 
 #include "core/result.h"
 
+#include "core/capture_sink.h"
 #include "obd/dtc_decoder.h"
 #include "obd/iso15765.h"
 #include "obd/obd_request.h"
@@ -37,9 +38,11 @@ public:
     /// @param channel Open CAN channel for communication.
     /// @param tx_id Request CAN ID (default: 0x7DF functional broadcast).
     /// @param rx_base Expected response base ID (default: 0x7E8).
+    /// @param frame_sink Optional observer to receive copies of all TX/RX frames.
     explicit ObdSession(IChannel& channel,
                         uint32_t tx_id = iso15765::kFunctionalTxId,
-                        uint32_t rx_base = iso15765::kResponseBase);
+                        uint32_t rx_base = iso15765::kResponseBase,
+                        ICaptureSync* frame_sink = nullptr);
 
     /// Query which PIDs are supported (Mode $01, PIDs $00/$20/$40).
     [[nodiscard]] Result<std::vector<SupportedPids>> query_supported_pids();
@@ -63,6 +66,7 @@ private:
     IChannel& channel_;
     uint32_t tx_id_;
     uint32_t rx_base_;
+    ICaptureSync* frame_sink_;
 
     /// Send request and wait for single-frame response.
     [[nodiscard]] Result<ObdResponse>

@@ -83,7 +83,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo  Build succeeded: %BUILD_DIR%\canmatik.exe
+echo  Build succeeded.
 echo.
 
 endlocal

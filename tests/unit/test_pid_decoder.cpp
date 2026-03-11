@@ -89,3 +89,60 @@ TEST_CASE("PidDecoder: decode_pid produces full DecodedPid", "[obd][decoder]") {
     CHECK(decoded.raw_bytes.size() == 1);
     CHECK(decoded.timestamp_us == 12345);
 }
+
+TEST_CASE("PidDecoder: Intake manifold pressure (0x64) = 100 kPa", "[obd][decoder]") {
+    auto* def = pid_lookup(0x01, 0x0B);
+    REQUIRE(def != nullptr);
+
+    uint8_t data[] = {0x64};
+    double value = decode_pid_value(data, 1, def->formula);
+    CHECK_THAT(value, WithinAbs(100.0, 0.5));
+}
+
+TEST_CASE("PidDecoder: Timing advance (0xC0) = 32°", "[obd][decoder]") {
+    auto* def = pid_lookup(0x01, 0x0E);
+    REQUIRE(def != nullptr);
+
+    // A=0xC0=192, formula: (192 - 128) / 2 = 32
+    uint8_t data[] = {0xC0};
+    double value = decode_pid_value(data, 1, def->formula);
+    CHECK_THAT(value, WithinAbs(32.0, 0.5));
+}
+
+TEST_CASE("PidDecoder: O2 voltage (0x96, 0x80) = 0.75V", "[obd][decoder]") {
+    auto* def = pid_lookup(0x01, 0x14);
+    REQUIRE(def != nullptr);
+
+    // A=0x96=150, voltage = 150/200 = 0.75
+    uint8_t data[] = {0x96, 0x80};
+    double value = decode_pid_value(data, 2, def->formula);
+    CHECK_THAT(value, WithinAbs(0.75, 0.01));
+}
+
+TEST_CASE("PidDecoder: Distance with MIL (0x00, 0xC8) = 200 km", "[obd][decoder]") {
+    auto* def = pid_lookup(0x01, 0x21);
+    REQUIRE(def != nullptr);
+
+    uint8_t data[] = {0x00, 0xC8};
+    double value = decode_pid_value(data, 2, def->formula);
+    CHECK_THAT(value, WithinAbs(200.0, 0.5));
+}
+
+TEST_CASE("PidDecoder: Commanded AFR (0x80, 0x00) ≈ 1.0", "[obd][decoder]") {
+    auto* def = pid_lookup(0x01, 0x44);
+    REQUIRE(def != nullptr);
+
+    // 256*0x80 + 0x00 = 32768, / 32768 = 1.0
+    uint8_t data[] = {0x80, 0x00};
+    double value = decode_pid_value(data, 2, def->formula);
+    CHECK_THAT(value, WithinAbs(1.0, 0.001));
+}
+
+TEST_CASE("PidDecoder: Absolute throttle B (0x80) ≈ 50.2%", "[obd][decoder]") {
+    auto* def = pid_lookup(0x01, 0x47);
+    REQUIRE(def != nullptr);
+
+    uint8_t data[] = {0x80};
+    double value = decode_pid_value(data, 1, def->formula);
+    CHECK_THAT(value, WithinAbs(50.2, 0.5));
+}

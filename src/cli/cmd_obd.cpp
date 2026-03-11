@@ -23,6 +23,7 @@
 #include <atomic>
 #include <csignal>
 #include <filesystem>
+#include <fstream>
 #include <format>
 #include <iostream>
 #include <string>
@@ -141,11 +142,19 @@ int dispatch_obd(CLI::App& sub, const GlobalOptions& globals, const Config& conf
         if (name == "stream") {
             std::string obd_config_path;
             std::string interval_override;
+            std::string output_path;
+            bool raw_flag = false;
             if (auto* opt = child->get_option_no_throw("--obd-config")) {
                 if (opt->count() > 0) obd_config_path = opt->as<std::string>();
             }
             if (auto* opt = child->get_option_no_throw("--interval")) {
                 if (opt->count() > 0) interval_override = opt->as<std::string>();
+            }
+            if (auto* opt = child->get_option_no_throw("--output")) {
+                if (opt->count() > 0) output_path = opt->as<std::string>();
+            }
+            if (auto* opt = child->get_option_no_throw("--raw")) {
+                raw_flag = opt->count() > 0;
             }
 
             // Load or generate OBD config
@@ -197,27 +206,65 @@ int dispatch_obd(CLI::App& sub, const GlobalOptions& globals, const Config& conf
 
             ObdSession obd(*session->channel(), obd_cfg.tx_id, obd_cfg.rx_base);
 
+            // Open output file if requested
+            std::ofstream out_file;
+            if (!output_path.empty()) {
+                out_file.open(output_path, std::ios::out | std::ios::trunc);
+                if (!out_file.is_open()) {
+                    std::cerr << "Error: Cannot open output file: " << output_path << '\n';
+                    session->closeChannel();
+                    session->disconnect();
+                    return 1;
+                }
+                LOG_INFO("OBD stream output to: {}", output_path);
+            }
+
             g_obd_stop.store(false);
             auto prev = std::signal(SIGINT, obd_signal_handler);
 
             QueryScheduler scheduler(obd, obd_cfg, [&](const DecodedPid& decoded) {
-                if (globals.json) {
+                // Build JSON representation for file/json output
+                auto build_json = [&]() {
                     nlohmann::json j;
+                    j["timestamp_us"] = decoded.timestamp_us;
                     j["ecu_id"] = std::format("0x{:03X}", decoded.ecu_id);
                     j["pid"] = std::format("0x{:02X}", decoded.pid);
                     j["name"] = decoded.name;
                     j["value"] = decoded.value;
                     j["unit"] = decoded.unit;
-                    std::cout << j.dump() << '\n';
+                    if (raw_flag && !decoded.raw_bytes.empty()) {
+                        std::string hex;
+                        for (size_t i = 0; i < decoded.raw_bytes.size(); ++i) {
+                            if (i > 0) hex += ' ';
+                            hex += std::format("{:02X}", decoded.raw_bytes[i]);
+                        }
+                        j["raw"] = hex;
+                    }
+                    return j;
+                };
+
+                // Console output
+                if (globals.json) {
+                    std::cout << build_json().dump() << '\n';
                 } else {
                     std::cout << std::format("  0x{:02X}  {:>8.1f} {:5s}  {}\n",
                                              decoded.pid, decoded.value, decoded.unit,
                                              decoded.name);
                 }
+
+                // File output (always JSONL)
+                if (out_file.is_open()) {
+                    out_file << build_json().dump() << '\n';
+                    out_file.flush();
+                }
             });
 
             scheduler.run(g_obd_stop);
 
+            if (out_file.is_open()) {
+                out_file.close();
+                std::cerr << "Stream saved to: " << output_path << '\n';
+            }
             std::signal(SIGINT, prev);
             session->closeChannel();
             session->disconnect();

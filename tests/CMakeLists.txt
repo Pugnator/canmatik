@@ -25,6 +25,13 @@ add_executable(canmatik_unit_tests
     unit/test_obd_request.cpp
     unit/test_obd_response.cpp
     unit/test_query_scheduler.cpp
+    unit/test_gui_settings.cpp
+    unit/test_frame_collector.cpp
+    unit/test_replay_controller.cpp
+    # GUI sources needed by GUI unit tests (no separate library)
+    ${CMAKE_SOURCE_DIR}/src/gui/gui_settings.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/frame_collector.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/controllers/replay_controller.cpp
 )
 
 target_link_libraries(canmatik_unit_tests PRIVATE
@@ -32,6 +39,7 @@ target_link_libraries(canmatik_unit_tests PRIVATE
     canmatik_logging
     canmatik_obd
     canmatik_mock
+    nlohmann_json::nlohmann_json
     Catch2::Catch2WithMain
 )
 

@@ -1,0 +1,2 @@
+// Windows resource file — embeds application icon into canmatik_gui.exe
+IDI_ICON1 ICON "../../icon.ico"

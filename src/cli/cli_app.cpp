@@ -25,6 +25,7 @@ void register_status_command(CLI::App& app, const GlobalOptions& globals, const 
 void register_demo_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 void register_label_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 void register_obd_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
+void register_sniff_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 
 // Dispatch functions (implemented in cmd_*.cpp)
 int dispatch_scan(CLI::App& sub, const GlobalOptions& globals, const Config& config);
@@ -35,6 +36,7 @@ int dispatch_status(CLI::App& sub, const GlobalOptions& globals, const Config& c
 int dispatch_demo(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 int dispatch_label(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 int dispatch_obd(CLI::App& sub, const GlobalOptions& globals, const Config& config);
+int dispatch_sniff(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 
 // ---------------------------------------------------------------------------
 // build_cli
@@ -104,12 +106,19 @@ std::unique_ptr<CLI::App> build_cli(GlobalOptions& globals) {
     auto* obd_stream = obd->add_subcommand("stream", "Stream decoded PID values in real time");
     obd_stream->add_option("--obd-config", "Path to OBD YAML config file");
     obd_stream->add_option("--interval", "Query interval override (e.g., 500ms, 1s, 2hz)");
+    obd_stream->add_option("--output,-o", "Write stream data to file (JSONL format)");
+    obd_stream->add_flag("--raw", "Include raw CAN bytes in output");
 
     auto* obd_dtc = obd->add_subcommand("dtc", "Read or clear diagnostic trouble codes");
     obd_dtc->add_flag("--clear", "Clear stored DTCs (Mode $04)");
     obd_dtc->add_flag("--force", "Skip confirmation for --clear");
 
     obd->add_subcommand("info", "Read vehicle info (VIN, ECU name, calibration)");
+
+    // Sniff — delta-only CAN monitor with diff highlighting
+    auto* sniff = app->add_subcommand("sniff", "Show only changed CAN frames with diff highlighting");
+    sniff->add_option("--bitrate", "CAN bitrate in bps")->default_val("500000");
+    sniff->add_option("--filter", "Filter specification (repeatable)")->expected(-1);
 
     return app;
 }
@@ -200,6 +209,7 @@ int dispatch(CLI::App& app, const GlobalOptions& globals, const Config& config) 
             if (name == "demo")    return dispatch_demo(*sub, globals, config);
             if (name == "label")   return dispatch_label(*sub, globals, config);
             if (name == "obd")     return dispatch_obd(*sub, globals, config);
+            if (name == "sniff")   return dispatch_sniff(*sub, globals, config);
         }
     }
 

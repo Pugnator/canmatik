@@ -2,14 +2,16 @@
 /// ObdSession implementation — query orchestration over IChannel.
 
 #include "obd/obd_session.h"
+#include "core/timestamp.h"
 
 #include <chrono>
 #include <cstring>
 
 namespace canmatik {
 
-ObdSession::ObdSession(IChannel& channel, uint32_t tx_id, uint32_t rx_base)
-    : channel_(channel), tx_id_(tx_id), rx_base_(rx_base) {}
+ObdSession::ObdSession(IChannel& channel, uint32_t tx_id, uint32_t rx_base,
+                       ICaptureSync* frame_sink)
+    : channel_(channel), tx_id_(tx_id), rx_base_(rx_base), frame_sink_(frame_sink) {}
 
 Result<std::vector<SupportedPids>> ObdSession::query_supported_pids() {
     std::vector<SupportedPids> result;
@@ -110,6 +112,8 @@ Result<void> ObdSession::clear_dtcs(bool force) {
     frame.data[0] = 0x01; // Single frame, 1 payload byte
     frame.data[1] = 0x04; // Mode $04
 
+    frame.host_timestamp_us = host_timestamp_us();
+    if (frame_sink_) frame_sink_->onFrame(frame);
     channel_.write(frame);
 
     // Wait for positive response (0x44)
@@ -173,6 +177,8 @@ Result<VehicleInfo> ObdSession::read_vehicle_info() {
 Result<ObdResponse>
 ObdSession::send_and_receive(uint8_t mode, uint8_t pid) {
     auto request = build_obd_request(mode, pid, tx_id_);
+    request.host_timestamp_us = host_timestamp_us();
+    if (frame_sink_) frame_sink_->onFrame(request);
     channel_.write(request);
 
     auto frame = read_obd_frame(iso15765::kP2CanTimeout);
@@ -184,6 +190,8 @@ ObdSession::send_and_receive(uint8_t mode, uint8_t pid) {
 Result<std::vector<uint8_t>>
 ObdSession::send_and_receive_multiframe(uint8_t mode, uint8_t pid) {
     auto request = build_obd_request(mode, pid, tx_id_);
+    request.host_timestamp_us = host_timestamp_us();
+    if (frame_sink_) frame_sink_->onFrame(request);
     channel_.write(request);
 
     // Read first response frame
@@ -213,6 +221,8 @@ ObdSession::send_and_receive_multiframe(uint8_t mode, uint8_t pid) {
 
     // Send flow control
     auto fc = build_flow_control(tx_id_);
+    fc.host_timestamp_us = host_timestamp_us();
+    if (frame_sink_) frame_sink_->onFrame(fc);
     channel_.write(fc);
 
     // Read consecutive frames
@@ -242,6 +252,7 @@ ObdSession::read_obd_frame(uint32_t timeout_ms) {
         auto frames = channel_.read(static_cast<uint32_t>(remaining));
         for (const auto& f : frames) {
             if (iso15765::is_response_id(f.arbitration_id)) {
+                if (frame_sink_) frame_sink_->onFrame(f);
                 return f;
             }
         }
