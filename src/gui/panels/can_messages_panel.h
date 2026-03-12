@@ -15,6 +15,7 @@ namespace canmatik {
 void render_can_messages_panel(const std::vector<MessageRow>& rows,
                                GuiState& state,
                                FrameCollector& collector,
-                               GuiSettings& settings);
+                               GuiSettings& settings,
+                               bool show_graph = true);
 
 } // namespace canmatik

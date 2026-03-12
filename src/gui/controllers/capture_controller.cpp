@@ -13,7 +13,8 @@ namespace canmatik {
 
 std::string CaptureController::connect(const std::string& provider_name,
                                         uint32_t bitrate, bool mock,
-                                        FrameCollector& collector) {
+                                        FrameCollector& collector,
+                                        BusProtocol protocol) {
     try {
         if (mock)
             session_.setProvider(std::make_unique<MockProvider>());
@@ -38,7 +39,7 @@ std::string CaptureController::connect(const std::string& provider_name,
         }
 
         session_.connect(*sel);
-        session_.openChannel(bitrate);
+        session_.openChannel(bitrate, protocol);
         auto& st = session_.mutableStatus();
         if (mock) st.provider_name = "MockProvider";
         return {};

@@ -4,6 +4,7 @@
 /// Persisted GUI settings (canmatik_gui.json).
 
 #include "gui/gui_state.h"
+#include "core/can_frame.h"
 
 #include <cstdint>
 #include <string>
@@ -16,9 +17,11 @@ struct GuiSettings {
     std::string provider;
     uint32_t    bitrate         = 500000;
     bool        mock_enabled    = false;
+    BusProtocol bus_protocol    = BusProtocol::CAN;
 
     // Capture buffer
-    uint32_t    buffer_capacity = 100000;
+    uint32_t    buffer_capacity  = 100000;
+    bool        buffer_overwrite = false;   ///< true = ring-buffer wraps; false = stop when full
 
     // Change filter
     uint32_t    change_filter_n = 1;
@@ -35,6 +38,25 @@ struct GuiSettings {
 
     // Appearance
     ColorScheme color_scheme    = ColorScheme::DARK;
+
+    // Watchdog
+    uint32_t    watchdog_history_size = 200;  ///< Max decoded value samples per watched ID
+
+    // Font scale (multiplier: 0.5 – 3.0, default 1.0)
+    float font_scale_can = 1.0f;  ///< Bus Messages panel font scale
+    float font_scale_obd = 1.0f;  ///< OBD Data panel font scale
+
+    // Font colors (RGBA, 0.0–1.0)
+    // CAN messages panel
+    float color_can_new[4]      = {0.3f, 1.0f, 0.3f, 1.0f};  ///< New ID (green)
+    float color_can_changed[4]  = {1.0f, 0.3f, 0.3f, 1.0f};  ///< Changed byte (red)
+    float color_can_dlc[4]      = {1.0f, 0.9f, 0.2f, 1.0f};  ///< DLC changed (yellow)
+    float color_can_default[4]  = {0.9f, 0.9f, 0.9f, 1.0f};  ///< Normal text
+    float color_can_watched[4]  = {0.4f, 0.8f, 1.0f, 1.0f};  ///< Watched (cyan)
+    // OBD data panel
+    float color_obd_changed[4]  = {0.3f, 1.0f, 0.3f, 1.0f};  ///< Value changed (green)
+    float color_obd_normal[4]   = {1.0f, 1.0f, 1.0f, 1.0f};  ///< Normal text
+    float color_obd_dim[4]      = {0.6f, 0.6f, 0.7f, 1.0f};  ///< Dim/raw text
 
     // Window
     int         window_width    = 1024;

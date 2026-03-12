@@ -3,12 +3,35 @@
 # ===========================================================================
 cmake_minimum_required(VERSION 3.24)
 
-# Allow older cmake_minimum_required in vendored/FetchContent dependencies (CMake 4.0 compat)
+# Allow older cmake_minimum_required in FetchContent dependencies (CMake 4.0 compat)
 if(POLICY CMP0077)
     cmake_policy(SET CMP0077 NEW)
 endif()
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE STRING "" FORCE)
+
+# ---------------------------------------------------------------------------
+# 32-bit build for J2534 DLL compatibility
+# ---------------------------------------------------------------------------
+# Most J2534 drivers ship as 32-bit DLLs; a 64-bit process cannot LoadLibrary
+# them.
+#
+# MSVC:   The platform is forced to Win32 automatically below.
+#         Override with: cmake -B build -A x64  (if you really need 64-bit)
+#
+# MINGW:  Use the MSYS2 MINGW32 shell with the i686 toolchain:
+#           pacman -S mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-ninja
+#           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+#           cmake --build build
+#         The -m32 flag is NOT used because MSYS2 toolchains are not multilib.
+# ---------------------------------------------------------------------------
+
+# For MSVC generators, default to 32-bit (Win32) unless the user explicitly
+# requested a different platform via -A on the command line.
+if(NOT CMAKE_GENERATOR_PLATFORM AND CMAKE_GENERATOR MATCHES "Visual Studio")
+    set(CMAKE_GENERATOR_PLATFORM "Win32" CACHE STRING "Target platform" FORCE)
+    message(STATUS "MSVC detected ÔÇö defaulting to 32-bit (Win32) for J2534 compatibility.")
+endif()
 
 project(canmatik
     VERSION   0.2.0
@@ -23,29 +46,12 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ---------------------------------------------------------------------------
-# 32-bit build for J2534 DLL compatibility
-# ---------------------------------------------------------------------------
-# Most J2534 drivers ship as 32-bit DLLs; a 64-bit process cannot LoadLibrary
-# them. For real-hardware MVP testing, build from the MSYS2 MINGW32 shell
-# using the i686 toolchain:
-#
-#   pacman -S mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-ninja
-#   # Open "MSYS2 MinGW 32-bit" shell, then:
-#   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-#   cmake --build build
-#
-# The -m32 flag is NOT used because MSYS2 toolchains are not multilib.
-# Instead, the correct architecture is selected by choosing the right
-# toolchain (i686 vs x86_64) at configure time.
-#
-# Detect architecture and warn if building 64-bit:
+# Warn if we ended up with a 64-bit build anyway (e.g. MinGW x86_64)
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(WARNING
         "Building 64-bit binary. J2534 adapters typically provide 32-bit DLLs "
         "that cannot be loaded from a 64-bit process. For hardware testing, "
-        "rebuild from the MSYS2 MINGW32 shell with the i686 toolchain. "
-        "See CMakeLists.txt comments for instructions.")
+        "rebuild with a 32-bit toolchain. See CMakeLists.txt comments.")
 endif()
 
 # Static linking for portable distribution (no libwinpthread-1.dll etc.)
@@ -96,32 +102,8 @@ set(YAML_CPP_INSTALL OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(CLI11 nlohmann_json Catch2 yaml-cpp)
 
-# ImGui — immediate-mode GUI library (Win32 + OpenGL3 backend)
-FetchContent_Declare(
-    imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG        v1.91.8
-)
-FetchContent_MakeAvailable(imgui)
-
-add_library(imgui STATIC
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_demo.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-)
-target_include_directories(imgui PUBLIC
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
-)
-target_link_libraries(imgui PUBLIC opengl32 gdi32 dwmapi)
-target_compile_options(imgui PRIVATE -w)
-
 # ---------------------------------------------------------------------------
-# Third-party vendored libraries (TinyLog, future ImGui)
+# Third-party vendored libraries (TinyLog, ImGui)
 # ---------------------------------------------------------------------------
 add_subdirectory(third_party)
 

@@ -30,6 +30,7 @@ TEST_CASE("FrameCollector stores frames in ring buffer", "[frame_collector]") {
 
 TEST_CASE("FrameCollector ring buffer overflow drops oldest", "[frame_collector]") {
     FrameCollector c(0, 3);
+    c.set_overwrite(true);
     for (int i = 0; i < 5; ++i)
         c.pushFrame(make_frame(0x100, 1, static_cast<uint8_t>(i)));
 

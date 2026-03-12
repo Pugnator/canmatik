@@ -41,6 +41,7 @@ public:
     int window_height() const { return settings_.window_height; }
 
 private:
+    void render_shared_toolbar();
     void render_can_tab();
     void render_obd_tab();
     void render_dtc_tab();
@@ -63,6 +64,7 @@ private:
 
     uint64_t          last_tick_us_ = 0;
     bool              show_watchdog_ = true;
+    bool              show_graph_    = true;
     float             change_flash_end_ = 0.0f; // for value flash timing
 };
 

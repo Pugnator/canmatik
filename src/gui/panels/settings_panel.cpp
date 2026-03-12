@@ -30,6 +30,104 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
         scheme_changed = true;
     }
 
+    // ----- Font Sizes section -----
+    ImGui::SeparatorText("Font Sizes");
+    ImGui::SetNextItemWidth(120);
+    if (ImGui::SliderFloat("Bus Messages##fontscale_can", &settings.font_scale_can, 0.5f, 3.0f, "%.1fx"))
+        settings.font_scale_can = std::clamp(settings.font_scale_can, 0.5f, 3.0f);
+    ImGui::SetNextItemWidth(120);
+    if (ImGui::SliderFloat("OBD Data##fontscale_obd", &settings.font_scale_obd, 0.5f, 3.0f, "%.1fx"))
+        settings.font_scale_obd = std::clamp(settings.font_scale_obd, 0.5f, 3.0f);
+    if (ImGui::Button("Reset Font Sizes")) {
+        settings.font_scale_can = 1.0f;
+        settings.font_scale_obd = 1.0f;
+    }
+
+    // ----- Font Colors section -----
+    ImGui::SeparatorText("Font Colors");
+    ImGui::TextDisabled("Click a color swatch to change it. Preview text is shown next to each.");
+
+    // CAN Messages panel colors
+    ImGui::Text("CAN Messages:");
+    ImGui::ColorEdit4("New ID##can_new", settings.color_can_new,
+                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(settings.color_can_new[0], settings.color_can_new[1],
+                              settings.color_can_new[2], settings.color_can_new[3]),
+                       "0x1A3 New message");
+
+    ImGui::ColorEdit4("Changed##can_chg", settings.color_can_changed,
+                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(settings.color_can_changed[0], settings.color_can_changed[1],
+                              settings.color_can_changed[2], settings.color_can_changed[3]),
+                       "A0 FF 3C Changed bytes");
+
+    ImGui::ColorEdit4("DLC Changed##can_dlc", settings.color_can_dlc,
+                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(settings.color_can_dlc[0], settings.color_can_dlc[1],
+                              settings.color_can_dlc[2], settings.color_can_dlc[3]),
+                       "8 DLC changed");
+
+    ImGui::ColorEdit4("Normal##can_def", settings.color_can_default,
+                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(settings.color_can_default[0], settings.color_can_default[1],
+                              settings.color_can_default[2], settings.color_can_default[3]),
+                       "0x212 Normal text");
+
+    ImGui::ColorEdit4("Watched##can_watch", settings.color_can_watched,
+                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(settings.color_can_watched[0], settings.color_can_watched[1],
+                              settings.color_can_watched[2], settings.color_can_watched[3]),
+                       "0x7E8 Watched ID");
+
+    // OBD Data panel colors
+    ImGui::Spacing();
+    ImGui::Text("OBD Data:");
+    ImGui::ColorEdit4("Value Changed##obd_chg", settings.color_obd_changed,
+                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(settings.color_obd_changed[0], settings.color_obd_changed[1],
+                              settings.color_obd_changed[2], settings.color_obd_changed[3]),
+                       "3200.5 RPM (changed)");
+
+    ImGui::ColorEdit4("Normal##obd_norm", settings.color_obd_normal,
+                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(settings.color_obd_normal[0], settings.color_obd_normal[1],
+                              settings.color_obd_normal[2], settings.color_obd_normal[3]),
+                       "Engine RPM");
+
+    ImGui::ColorEdit4("Dim / Raw##obd_dim", settings.color_obd_dim,
+                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(settings.color_obd_dim[0], settings.color_obd_dim[1],
+                              settings.color_obd_dim[2], settings.color_obd_dim[3]),
+                       "0C 80 raw hex");
+
+    // Reset to defaults button
+    if (ImGui::Button("Reset Colors to Defaults")) {
+        float d_new[4]     = {0.3f, 1.0f, 0.3f, 1.0f};
+        float d_changed[4] = {1.0f, 0.3f, 0.3f, 1.0f};
+        float d_dlc[4]     = {1.0f, 0.9f, 0.2f, 1.0f};
+        float d_default[4] = {0.9f, 0.9f, 0.9f, 1.0f};
+        float d_watched[4] = {0.4f, 0.8f, 1.0f, 1.0f};
+        float d_obd_c[4]   = {0.3f, 1.0f, 0.3f, 1.0f};
+        float d_obd_n[4]   = {1.0f, 1.0f, 1.0f, 1.0f};
+        float d_obd_d[4]   = {0.6f, 0.6f, 0.7f, 1.0f};
+        std::copy(d_new,     d_new + 4,     settings.color_can_new);
+        std::copy(d_changed, d_changed + 4, settings.color_can_changed);
+        std::copy(d_dlc,     d_dlc + 4,     settings.color_can_dlc);
+        std::copy(d_default, d_default + 4, settings.color_can_default);
+        std::copy(d_watched, d_watched + 4, settings.color_can_watched);
+        std::copy(d_obd_c,   d_obd_c + 4,  settings.color_obd_changed);
+        std::copy(d_obd_n,   d_obd_n + 4,  settings.color_obd_normal);
+        std::copy(d_obd_d,   d_obd_d + 4,  settings.color_obd_dim);
+    }
+
     // ----- Connection section -----
     ImGui::SeparatorText("Connection");
 
@@ -66,15 +164,32 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
             if (provider_names[i] == settings.provider) provider_idx = i;
     }
 
-    // Bitrate combo
-    static const uint32_t bitrates[] = {125000, 250000, 500000, 1000000};
-    static const char* bitrate_labels[] = {"125 kbps", "250 kbps", "500 kbps", "1 Mbps"};
-    int br_idx = 2; // default 500k
-    for (int i = 0; i < 4; ++i)
-        if (bitrates[i] == settings.bitrate) br_idx = i;
-    ImGui::SetNextItemWidth(120);
-    if (ImGui::Combo("Bitrate", &br_idx, bitrate_labels, 4))
-        settings.bitrate = bitrates[br_idx];
+    // Bus protocol selector
+    static const char* proto_labels[] = {"CAN", "J1850 VPW (10.4 kbps)", "J1850 PWM (41.6 kbps)"};
+    int proto_idx = static_cast<int>(settings.bus_protocol);
+    ImGui::SetNextItemWidth(200);
+    if (ImGui::Combo("Bus Protocol", &proto_idx, proto_labels, 3)) {
+        settings.bus_protocol = static_cast<BusProtocol>(proto_idx);
+        // Auto-set default bitrate when switching protocol
+        if (settings.bus_protocol == BusProtocol::J1850_VPW) settings.bitrate = 10400;
+        else if (settings.bus_protocol == BusProtocol::J1850_PWM) settings.bitrate = 41600;
+        else settings.bitrate = 500000;
+    }
+
+    // Bitrate combo (options depend on protocol)
+    if (settings.bus_protocol == BusProtocol::CAN) {
+        static const uint32_t bitrates[] = {125000, 250000, 500000, 1000000};
+        static const char* bitrate_labels[] = {"125 kbps", "250 kbps", "500 kbps", "1 Mbps"};
+        int br_idx = 2; // default 500k
+        for (int i = 0; i < 4; ++i)
+            if (bitrates[i] == settings.bitrate) br_idx = i;
+        ImGui::SetNextItemWidth(120);
+        if (ImGui::Combo("Bitrate", &br_idx, bitrate_labels, 4))
+            settings.bitrate = bitrates[br_idx];
+    } else {
+        // J1850: fixed bitrate, display as read-only
+        ImGui::TextDisabled("Bitrate: %u bps (fixed)", settings.bitrate);
+    }
 
     // Mock checkbox
     ImGui::Checkbox("Mock mode", &settings.mock_enabled);
@@ -91,51 +206,18 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
         collector.resize_buffer(settings.buffer_capacity);
     }
     ImGui::TextDisabled("Range: 1,000 — 10,000,000 frames");
+    ImGui::Checkbox("Overwrite when full", &settings.buffer_overwrite);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("When enabled, the buffer wraps around and overwrites\n"
+                          "oldest frames. When disabled, recording stops at the limit.");
 
-    // ----- ID Filter section -----
-    ImGui::SeparatorText("ID Filter");
-    {
-        int fm = static_cast<int>(settings.id_filter_mode);
-        ImGui::RadioButton("Exclude listed IDs", &fm, 0); ImGui::SameLine();
-        ImGui::RadioButton("Include only listed IDs", &fm, 1);
-        settings.id_filter_mode = static_cast<IdFilterMode>(fm);
-        ImGui::TextDisabled(settings.id_filter_mode == IdFilterMode::EXCLUDE
-            ? "Listed IDs are hidden. Empty list = show all."
-            : "Only listed IDs are shown. Empty list = show all.");
-
-        int remove_filter_idx = -1;
-        for (size_t i = 0; i < settings.id_filter_list.size(); ++i) {
-            ImGui::PushID(static_cast<int>(i) + 10000);
-            ImGui::BulletText("0x%03X", settings.id_filter_list[i]);
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Remove"))
-                remove_filter_idx = static_cast<int>(i);
-            ImGui::PopID();
-        }
-        if (remove_filter_idx >= 0)
-            settings.id_filter_list.erase(settings.id_filter_list.begin() + remove_filter_idx);
-
-        static char id_buf[12] = {};
-        ImGui::SetNextItemWidth(80);
-        ImGui::InputText("##AddFilterID", id_buf, sizeof(id_buf));
-        ImGui::SameLine();
-        if (ImGui::Button("Add ID")) {
-            unsigned val = 0;
-            if (sscanf(id_buf, "%x", &val) == 1 && val <= 0x1FFFFFFF) {
-                auto id_val = static_cast<uint32_t>(val);
-                if (std::find(settings.id_filter_list.begin(), settings.id_filter_list.end(), id_val)
-                        == settings.id_filter_list.end())
-                    settings.id_filter_list.push_back(id_val);
-                id_buf[0] = '\0';
-            }
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("Hex CAN ID");
-        if (!settings.id_filter_list.empty()) {
-            if (ImGui::Button("Clear All IDs"))
-                settings.id_filter_list.clear();
-        }
-    }
+    // ----- Watchdog section -----
+    ImGui::SeparatorText("Watchdog");
+    int whs = static_cast<int>(settings.watchdog_history_size);
+    ImGui::SetNextItemWidth(120);
+    if (ImGui::InputInt("History size (samples)", &whs))
+        settings.watchdog_history_size = static_cast<uint32_t>(std::clamp(whs, 10, 10000));
+    ImGui::TextDisabled("Max decoded value samples stored per watched ID.");
 
     // ----- OBD Settings section -----
     ImGui::SeparatorText("OBD Settings");

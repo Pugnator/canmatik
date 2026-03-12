@@ -10,10 +10,13 @@
 
 namespace canmatik {
 
-static const ImVec4 kColorChanged  = {1.0f, 1.0f, 0.3f, 1.0f}; // yellow flash
-static const ImVec4 kColorNormal   = {0.9f, 0.9f, 0.9f, 1.0f};
+static ImVec4 to_imvec4(const float c[4]) { return {c[0], c[1], c[2], c[3]}; }
 
-void render_obd_data_panel(const std::vector<ObdPidRow>& rows) {
+void render_obd_data_panel(const std::vector<ObdPidRow>& rows, const GuiSettings& settings,
+                          bool show_graph) {
+    const ImVec4 kColorChanged = to_imvec4(settings.color_obd_changed);
+    const ImVec4 kColorNormal  = to_imvec4(settings.color_obd_normal);
+    const ImVec4 kColorDimText = to_imvec4(settings.color_obd_dim);
     static int selected_pid_idx = -1;
 
     if (rows.empty()) {
@@ -24,10 +27,12 @@ void render_obd_data_panel(const std::vector<ObdPidRow>& rows) {
     ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                             ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
 
-    float table_h = (selected_pid_idx >= 0) ? ImGui::GetContentRegionAvail().y * 0.5f
-                                             : ImGui::GetContentRegionAvail().y;
+    float table_h = (show_graph && selected_pid_idx >= 0)
+                        ? ImGui::GetContentRegionAvail().y * 0.5f
+                        : ImGui::GetContentRegionAvail().y;
 
     if (ImGui::BeginTable("##OBDPIDs", 5, flags, ImVec2(0, table_h))) {
+        ImGui::SetWindowFontScale(settings.font_scale_obd);
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("PID",   ImGuiTableColumnFlags_WidthFixed, 50);
         ImGui::TableSetupColumn("Name",  ImGuiTableColumnFlags_WidthStretch);
@@ -51,7 +56,7 @@ void render_obd_data_panel(const std::vector<ObdPidRow>& rows) {
 
             // Name
             ImGui::TableNextColumn();
-            ImGui::Text("%s", row.name.c_str());
+            ImGui::TextColored(kColorNormal, "%s", row.name.c_str());
 
             // Value (flash on change)
             ImGui::TableNextColumn();
@@ -60,11 +65,11 @@ void render_obd_data_panel(const std::vector<ObdPidRow>& rows) {
 
             // Unit
             ImGui::TableNextColumn();
-            ImGui::Text("%s", row.unit.c_str());
+            ImGui::TextColored(kColorNormal, "%s", row.unit.c_str());
 
             // Raw hex
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("%s", row.raw_hex.c_str());
+            ImGui::TextColored(kColorDimText, "%s", row.raw_hex.c_str());
 
             ImGui::PopID();
         }
@@ -72,7 +77,7 @@ void render_obd_data_panel(const std::vector<ObdPidRow>& rows) {
     }
 
     // History graph for selected PID
-    if (selected_pid_idx >= 0 && selected_pid_idx < static_cast<int>(rows.size())) {
+    if (show_graph && selected_pid_idx >= 0 && selected_pid_idx < static_cast<int>(rows.size())) {
         const auto& sel = rows[selected_pid_idx];
         ImGui::Separator();
         ImGui::Text("History: %s (0x%02X)", sel.name.c_str(), sel.pid);
@@ -84,10 +89,29 @@ void render_obd_data_panel(const std::vector<ObdPidRow>& rows) {
             for (auto& [t, v] : sel.history)
                 values.push_back(static_cast<float>(v));
 
-            // Find min/max for axis
-            float vmin = *std::min_element(values.begin(), values.end());
-            float vmax = *std::max_element(values.begin(), values.end());
-            if (vmin == vmax) { vmin -= 1.0f; vmax += 1.0f; }
+            // Find data min/max
+            float data_min = *std::min_element(values.begin(), values.end());
+            float data_max = *std::max_element(values.begin(), values.end());
+            if (data_min == data_max) { data_min -= 1.0f; data_max += 1.0f; }
+
+            // Y-axis scale controls
+            static bool obd_auto_scale = true;
+            static float obd_y_min = 0.0f;
+            static float obd_y_max = 100.0f;
+            ImGui::SameLine();
+            ImGui::Checkbox("Auto Y", &obd_auto_scale);
+            if (!obd_auto_scale) {
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(80);
+                ImGui::DragFloat("Y min##obd", &obd_y_min, 0.1f);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(80);
+                ImGui::DragFloat("Y max##obd", &obd_y_max, 0.1f);
+                if (obd_y_min >= obd_y_max) obd_y_max = obd_y_min + 1.0f;
+            } else {
+                obd_y_min = data_min;
+                obd_y_max = data_max;
+            }
 
             char overlay[64];
             snprintf(overlay, sizeof(overlay), "%.1f %s (last 60s)",
@@ -95,7 +119,7 @@ void render_obd_data_panel(const std::vector<ObdPidRow>& rows) {
 
             ImGui::PlotLines("##History", values.data(),
                              static_cast<int>(values.size()),
-                             0, overlay, vmin, vmax,
+                             0, overlay, obd_y_min, obd_y_max,
                              ImVec2(ImGui::GetContentRegionAvail().x,
                                     ImGui::GetContentRegionAvail().y));
         } else {

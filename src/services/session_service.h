@@ -37,9 +37,9 @@ public:
     /// Disconnect from the current device and close any open channel.
     void disconnect();
 
-    /// Open a CAN channel at the specified bitrate.
+    /// Open a CAN channel at the specified bitrate and bus protocol.
     /// @throws TransportError if no device connected or channel open fails.
-    void openChannel(uint32_t bitrate);
+    void openChannel(uint32_t bitrate, BusProtocol protocol = BusProtocol::CAN);
 
     /// Close the currently open CAN channel.
     void closeChannel();

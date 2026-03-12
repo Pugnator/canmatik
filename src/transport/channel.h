@@ -16,8 +16,8 @@ class IChannel {
 public:
     virtual ~IChannel() = default;
 
-    /// Open the channel at the specified bitrate.
-    virtual void open(uint32_t bitrate) = 0;
+    /// Open the channel at the specified bitrate and bus protocol.
+    virtual void open(uint32_t bitrate, BusProtocol protocol = BusProtocol::CAN) = 0;
 
     /// Close the channel. Safe to call if already closed.
     virtual void close() = 0;

@@ -44,6 +44,12 @@ public:
     size_t frame_count() const { return frames_.size(); }
     size_t current_index() const { return current_; }
 
+    /// Seek to a specific frame index; pushes all frames up to that index into collector.
+    void seek(size_t frame_index, FrameCollector& collector);
+
+    /// Total duration of the loaded file in microseconds (0 if empty or single frame).
+    uint64_t duration_us() const;
+
     /// Advance playback by real delta microseconds; push frames to collector.
     void tick(uint64_t delta_us, FrameCollector& collector);
 

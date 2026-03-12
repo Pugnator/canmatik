@@ -21,7 +21,7 @@ public:
     /// @param frame_rate Simulated frames per second.
     explicit MockChannel(uint32_t frame_rate = 100);
 
-    void open(uint32_t bitrate) override;
+    void open(uint32_t bitrate, BusProtocol protocol = BusProtocol::CAN) override;
     void close() override;
     std::vector<CanFrame> read(uint32_t timeout_ms) override;
     void write(const CanFrame& frame) override;

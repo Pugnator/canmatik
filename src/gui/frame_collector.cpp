@@ -27,9 +27,14 @@ void FrameCollector::pushFrame(const CanFrame& frame) {
 void FrameCollector::ingest(const CanFrame& frame) {
     // Store in ring buffer
     if (!ring_.empty()) {
-        ring_[ring_head_] = frame;
-        ring_head_ = (ring_head_ + 1) % ring_.size();
-        if (ring_count_ < ring_.size()) ++ring_count_;
+        if (ring_count_ >= ring_.size() && !overwrite_) {
+            // Buffer full and overwrite disabled ÔÇö drop the frame from the ring
+            // but still update per-ID state below for live display.
+        } else {
+            ring_[ring_head_] = frame;
+            ring_head_ = (ring_head_ + 1) % ring_.size();
+            if (ring_count_ < ring_.size()) ++ring_count_;
+        }
     }
 
     // Update per-ID state
@@ -54,6 +59,7 @@ void FrameCollector::ingest(const CanFrame& frame) {
         std::array<uint8_t, 8> h{};
         for (uint8_t i = 0; i < n; ++i) h[i] = frame.data[i];
         s.history.push_back(h);
+        s.history_time.push_back(rel);
         s.history_dlc.push_back(frame.dlc);
         return;
     }
@@ -90,10 +96,38 @@ void FrameCollector::ingest(const CanFrame& frame) {
     std::array<uint8_t, 8> h{};
     for (uint8_t i = 0; i < n; ++i) h[i] = frame.data[i];
     s.history.push_back(h);
+    s.history_time.push_back(rel);
     s.history_dlc.push_back(frame.dlc);
     if (s.history.size() > 100) {
         s.history.pop_front();
+        s.history_time.pop_front();
         s.history_dlc.pop_front();
+    }
+
+    // Record watchdog decoded history
+    if (watchdog_ids_.count(frame.arbitration_id)) {
+        auto cfg_it = watchdog_configs_.find(frame.arbitration_id);
+        WatchdogConfig cfg;
+        if (cfg_it != watchdog_configs_.end()) cfg = cfg_it->second;
+
+        double raw = 0.0;
+        uint8_t start = std::min(cfg.byte_start, uint8_t{7});
+        uint8_t count = std::min(cfg.byte_count, static_cast<uint8_t>(8 - start));
+        if (count <= n) {
+            uint64_t val = 0;
+            for (uint8_t i = 0; i < count; ++i)
+                val = (val << 8) | frame.data[start + i];
+            raw = static_cast<double>(val);
+        }
+
+        double decoded = raw;
+        if (cfg.mode == WatchdogDecodeMode::FORMULA && cfg.divisor != 0.0)
+            decoded = (raw * cfg.scale + cfg.offset) / cfg.divisor;
+
+        auto& hist = watchdog_history_[frame.arbitration_id];
+        hist.push_back({rel, decoded});
+        while (hist.size() > watchdog_history_max_)
+            hist.pop_front();
     }
 }
 
@@ -187,11 +221,15 @@ void FrameCollector::add_watchdog(uint32_t id) {
 void FrameCollector::remove_watchdog(uint32_t id) {
     std::lock_guard lock(mu_);
     watchdog_ids_.erase(id);
+    watchdog_configs_.erase(id);
+    watchdog_history_.erase(id);
 }
 
 void FrameCollector::clear_watchdogs() {
     std::lock_guard lock(mu_);
     watchdog_ids_.clear();
+    watchdog_configs_.clear();
+    watchdog_history_.clear();
 }
 
 bool FrameCollector::is_watched(uint32_t id) const {
@@ -251,11 +289,95 @@ void FrameCollector::clear() {
     ring_head_  = 0;
     ring_count_ = 0;
     ids_.clear();
+    watchdog_history_.clear();
+}
+
+void FrameCollector::set_overwrite(bool allow) {
+    std::lock_guard lock(mu_);
+    overwrite_ = allow;
+}
+
+bool FrameCollector::is_buffer_full() const {
+    std::lock_guard lock(mu_);
+    return !ring_.empty() && ring_count_ >= ring_.size();
 }
 
 uint64_t FrameCollector::unique_ids() const {
     std::lock_guard lock(mu_);
     return ids_.size();
+}
+
+void FrameCollector::set_watchdog_config(uint32_t id, const WatchdogConfig& cfg) {
+    std::lock_guard lock(mu_);
+    watchdog_configs_[id] = cfg;
+    // Clear old history when config changes so values are consistent
+    watchdog_history_[id].clear();
+}
+
+WatchdogConfig FrameCollector::get_watchdog_config(uint32_t id) const {
+    std::lock_guard lock(mu_);
+    auto it = watchdog_configs_.find(id);
+    if (it != watchdog_configs_.end()) return it->second;
+    return {};
+}
+
+std::vector<WatchdogSnapshot> FrameCollector::watchdog_detail_snapshot() const {
+    std::lock_guard lock(mu_);
+    std::vector<WatchdogSnapshot> result;
+    result.reserve(watchdog_ids_.size());
+    for (uint32_t id : watchdog_ids_) {
+        WatchdogSnapshot ws;
+        ws.arb_id = id;
+
+        // Config
+        auto cfg_it = watchdog_configs_.find(id);
+        ws.config = (cfg_it != watchdog_configs_.end()) ? cfg_it->second : WatchdogConfig{};
+
+        // History
+        auto hist_it = watchdog_history_.find(id);
+        if (hist_it != watchdog_history_.end()) {
+            ws.history.assign(hist_it->second.begin(), hist_it->second.end());
+            if (!ws.history.empty())
+                ws.current_value = ws.history.back().value;
+        }
+
+        // Raw row
+        auto id_it = ids_.find(id);
+        if (id_it != ids_.end()) {
+            ws.row = to_row(id_it->second);
+        }
+
+        result.push_back(std::move(ws));
+    }
+    std::sort(result.begin(), result.end(),
+              [](const WatchdogSnapshot& a, const WatchdogSnapshot& b) {
+                  return a.arb_id < b.arb_id;
+              });
+    return result;
+}
+
+void FrameCollector::set_watchdog_history_size(uint32_t max_samples) {
+    std::lock_guard lock(mu_);
+    watchdog_history_max_ = max_samples;
+    // Trim existing histories
+    for (auto& [id, hist] : watchdog_history_) {
+        while (hist.size() > max_samples)
+            hist.pop_front();
+    }
+}
+
+std::vector<std::pair<double, double>> FrameCollector::byte_history(uint32_t arb_id, uint8_t byte_idx) const {
+    std::lock_guard lock(mu_);
+    std::vector<std::pair<double, double>> result;
+    auto it = ids_.find(arb_id);
+    if (it == ids_.end() || byte_idx >= 8) return result;
+    const auto& s = it->second;
+    result.reserve(s.history.size());
+    for (size_t i = 0; i < s.history.size(); ++i) {
+        result.emplace_back(s.history_time[i],
+                            static_cast<double>(s.history[i][byte_idx]));
+    }
+    return result;
 }
 
 } // namespace canmatik

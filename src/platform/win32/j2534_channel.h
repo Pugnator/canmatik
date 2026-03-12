@@ -24,8 +24,8 @@ public:
     J2534Channel(J2534DllLoader& dll, unsigned long device_id);
     ~J2534Channel() override;
 
-    /// Open a CAN channel at the specified bitrate (PassThruConnect).
-    void open(uint32_t bitrate) override;
+    /// Open a channel at the specified bitrate and bus protocol (PassThruConnect).
+    void open(uint32_t bitrate, BusProtocol protocol = BusProtocol::CAN) override;
 
     /// Close the CAN channel (PassThruDisconnect).
     void close() override;
@@ -56,7 +56,11 @@ private:
     unsigned long device_id_ = 0;
     unsigned long channel_id_ = 0;
     uint32_t bitrate_ = 0;
+    BusProtocol protocol_ = BusProtocol::CAN;
     std::atomic<bool> open_{false};
+
+    /// Helper: true when protocol_ is J1850 VPW or PWM.
+    [[nodiscard]] bool is_j1850() const { return protocol_ == BusProtocol::J1850_VPW || protocol_ == BusProtocol::J1850_PWM; }
 
     /// Timestamp tracking for 32→64 bit rollover extension
     uint64_t last_raw_ts_ = 0;        ///< Last raw 32-bit timestamp

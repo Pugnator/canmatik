@@ -13,7 +13,7 @@ MockChannel::MockChannel(uint32_t frame_rate)
     : frame_rate_(frame_rate)
 {}
 
-void MockChannel::open(uint32_t bitrate) {
+void MockChannel::open(uint32_t bitrate, BusProtocol protocol) {
     if (open_.load()) {
         throw TransportError(0, "Mock channel already open",
                              "MockChannel::open", true);

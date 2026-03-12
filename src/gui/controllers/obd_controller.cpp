@@ -25,6 +25,8 @@ void ObdController::start_streaming(IChannel* channel,
     // Initialize rows
     {
         std::lock_guard lock(mu_);
+        active_pids_ = pids;
+        active_interval_ms_ = interval_ms;
         rows_.clear();
         for (auto pid : pids) {
             ObdPidRow r;
@@ -56,6 +58,10 @@ void ObdController::worker(IChannel* channel,
                             ICaptureSync* frame_sink) {
     ObdSession session(*channel, iso15765::kFunctionalTxId, iso15765::kResponseBase, frame_sink);
 
+    uint32_t per_pid_ms = (pids.size() > 0)
+        ? std::max(1u, interval_ms / static_cast<uint32_t>(pids.size()))
+        : interval_ms;
+
     while (running_.load()) {
         for (size_t i = 0; i < pids.size() && running_.load(); ++i) {
             auto result = session.query_pid(0x01, pids[i]);
@@ -79,13 +85,13 @@ void ObdController::worker(IChannel* channel,
                     if (row.history.size() > 600) row.history.pop_front(); // ~60s @ 10Hz
                 }
             }
-        }
 
-        // Sleep for the interval
-        auto wake = std::chrono::steady_clock::now() +
-                    std::chrono::milliseconds(interval_ms);
-        while (running_.load() && std::chrono::steady_clock::now() < wake)
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            // Sleep per-PID so full cycle approximates interval_ms
+            auto wake = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(per_pid_ms);
+            while (running_.load() && std::chrono::steady_clock::now() < wake)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
     }
 }
 

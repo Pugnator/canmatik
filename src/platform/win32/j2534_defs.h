@@ -50,6 +50,8 @@ constexpr long ERR_INVALID_DEVICE_ID    = 0x1A;
 // ===========================================================================
 // Protocol IDs
 // ===========================================================================
+constexpr unsigned long PROTOCOL_J1850_VPW  = 0x01;
+constexpr unsigned long PROTOCOL_J1850_PWM  = 0x02;
 constexpr unsigned long PROTOCOL_CAN        = 0x05;
 constexpr unsigned long PROTOCOL_ISO15765   = 0x06;
 constexpr unsigned long PROTOCOL_CAN_PS     = 0x8004;  // CAN with Pin Select

@@ -91,6 +91,8 @@ std::vector<DeviceInfo> RegistryScanner::scan() {
         // Read protocol support flags (DWORD: CAN, ISO15765)
         info.supports_can      = (read_reg_dword(provider_key, "CAN") != 0);
         info.supports_iso15765 = (read_reg_dword(provider_key, "ISO15765") != 0);
+        info.supports_j1850_vpw = (read_reg_dword(provider_key, "J1850VPW") != 0);
+        info.supports_j1850_pwm = (read_reg_dword(provider_key, "J1850PWM") != 0);
 
         ::RegCloseKey(provider_key);
 
@@ -108,7 +110,9 @@ std::vector<DeviceInfo> RegistryScanner::scan() {
         LOG_DEBUG("  Name: {}", info.name);
         LOG_DEBUG("  Vendor: {}", info.vendor);
         LOG_DEBUG("  DLL: {}", info.dll_path);
-        LOG_DEBUG("  CAN: {}, ISO15765: {}", info.supports_can, info.supports_iso15765);
+        LOG_DEBUG("  CAN: {}, ISO15765: {}, J1850VPW: {}, J1850PWM: {}",
+                  info.supports_can, info.supports_iso15765,
+                  info.supports_j1850_vpw, info.supports_j1850_pwm);
 
         providers.push_back(std::move(info));
     }

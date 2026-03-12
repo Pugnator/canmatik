@@ -62,7 +62,7 @@ void SessionService::disconnect() {
     }
 }
 
-void SessionService::openChannel(uint32_t bitrate) {
+void SessionService::openChannel(uint32_t bitrate, BusProtocol protocol) {
     if (!channel_) {
         throw TransportError(0, "Not connected to a device — cannot open channel",
                              "SessionService::openChannel");
@@ -72,8 +72,8 @@ void SessionService::openChannel(uint32_t bitrate) {
         closeChannel();
     }
 
-    LOG_INFO("Opening CAN channel at {} bps", bitrate);
-    channel_->open(bitrate);
+    LOG_INFO("Opening channel at {} bps (protocol={})", bitrate, static_cast<int>(protocol));
+    channel_->open(bitrate, protocol);
 
     status_.bitrate = bitrate;
     status_.channel_open = true;
@@ -82,7 +82,7 @@ void SessionService::openChannel(uint32_t bitrate) {
     status_.frames_transmitted = 0;
     status_.errors = 0;
     status_.dropped = 0;
-    LOG_INFO("CAN channel open at {} bps", bitrate);
+    LOG_INFO("Channel open at {} bps (protocol={})", bitrate, static_cast<int>(protocol));
 }
 
 void SessionService::closeChannel() {

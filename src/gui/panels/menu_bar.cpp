@@ -6,7 +6,7 @@
 
 namespace canmatik {
 
-void render_menu_bar(GuiState& state, bool& show_watchdog,
+void render_menu_bar(GuiState& state, bool& show_watchdog, bool& show_graph,
                      std::function<void()> on_open_file,
                      std::function<void()> on_save_buffer) {
     if (ImGui::BeginMainMenuBar()) {
@@ -22,6 +22,7 @@ void render_menu_bar(GuiState& state, bool& show_watchdog,
         }
         if (ImGui::BeginMenu("View")) {
             ImGui::MenuItem("Watchdog Panel", nullptr, &show_watchdog);
+            ImGui::MenuItem("Graph Panel", nullptr, &show_graph);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {

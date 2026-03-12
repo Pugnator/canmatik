@@ -12,6 +12,7 @@
 #include "imgui_impl_opengl3.h"
 
 #include "gui/gui_app.h"
+#include "core/log_macros.h"
 
 #include <string>
 
@@ -80,6 +81,25 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 // ---------------------------------------------------------------------------
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/,
                    LPSTR /*lpCmdLine*/, int nCmdShow) {
+    // Initialize TinyLog: console + file output
+    {
+        auto& logger = Log::get();
+        logger.reset_levels();
+        logger.set_level(TraceSeverity::info)
+              .set_level(TraceSeverity::warning)
+              .set_level(TraceSeverity::error)
+              .set_level(TraceSeverity::critical)
+              .set_level(TraceSeverity::debug)
+              .set_level(TraceSeverity::verbose);
+        logger.configure(TraceType::console);
+        RotationConfig rotation;
+        rotation.max_file_size    = 10485760;
+        rotation.max_backup_count = 5;
+        rotation.compress         = false;
+        logger.configure(TraceType::file, "canmatik_gui.log", rotation);
+        LOG_INFO("CANmatik GUI starting");
+    }
+
     // GuiApp manages all state
     canmatik::GuiApp app;
 

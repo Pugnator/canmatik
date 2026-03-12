@@ -19,11 +19,15 @@
 #include "logging/asc_writer.h"
 #include "logging/jsonl_writer.h"
 #include "core/session_status.h"
+#include "obd/pid_decoder.h"
+#include "obd/pid_table.h"
+#include "obd/dtc_decoder.h"
 
 #include "imgui.h"
 
 #include <algorithm>
 #include <format>
+#include <unordered_map>
 
 namespace canmatik {
 
@@ -34,6 +38,7 @@ void GuiApp::init(const std::string& settings_path) {
     settings_path_ = settings_path;
     settings_.load(settings_path_);
     collector_.resize_buffer(settings_.buffer_capacity);
+    collector_.set_overwrite(settings_.buffer_overwrite);
     last_tick_us_ = host_timestamp_us();
 }
 
@@ -58,6 +63,9 @@ void GuiApp::render() {
     uint64_t delta = now - last_tick_us_;
     last_tick_us_ = now;
 
+    // Sync overwrite mode to collector
+    collector_.set_overwrite(settings_.buffer_overwrite);
+
     // Drain live capture frames
     if (state_.data_source == DataSource::LIVE && capture_.is_capturing())
         capture_.drain();
@@ -65,6 +73,18 @@ void GuiApp::render() {
     // Advance replay
     if (state_.data_source == DataSource::FILE && replay_.is_playing())
         replay_.tick(delta, collector_);
+
+    // Auto-stop when buffer is full and overwrite is disabled
+    if (!settings_.buffer_overwrite && collector_.is_buffer_full()) {
+        if (state_.data_source == DataSource::LIVE && capture_.is_capturing()) {
+            capture_.stop();
+            state_.playback = PlaybackState::STOPPED;
+        }
+        if (state_.data_source == DataSource::FILE && replay_.is_playing()) {
+            replay_.pause();
+            state_.playback = PlaybackState::PAUSED;
+        }
+    }
 
     // Sync playback state when replay finishes on its own
     if (state_.data_source == DataSource::FILE &&
@@ -80,7 +100,8 @@ void GuiApp::render() {
     handle_keyboard_shortcuts();
 
     // Menu bar
-    render_menu_bar(state_, show_watchdog_, [this]{ open_file_dialog(); },
+    render_menu_bar(state_, show_watchdog_, show_graph_,
+                    [this]{ open_file_dialog(); },
                     [this]{ save_buffer_dialog(); });
 
     // Fullscreen dockspace
@@ -92,8 +113,12 @@ void GuiApp::render() {
                  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
                  ImGuiWindowFlags_NoBringToFrontOnFocus);
 
+    // === Shared toolbar: connection, data source, playback, save/open ===
+    render_shared_toolbar();
+
+    // === Tab bar: data sub-tabs + Settings ===
     if (ImGui::BeginTabBar("MainTabs")) {
-        if (ImGui::BeginTabItem("CAN Messages")) {
+        if (ImGui::BeginTabItem("Bus Messages")) {
             state_.selected_tab = 0;
             render_can_tab();
             ImGui::EndTabItem();
@@ -126,14 +151,15 @@ void GuiApp::render() {
 }
 
 // -----------------------------------------------------------------------
-// CAN Messages tab
+// Shared toolbar: connection, data source, playback, save/open, timeline
 // -----------------------------------------------------------------------
-void GuiApp::render_can_tab() {
+void GuiApp::render_shared_toolbar() {
     // Connect / Disconnect button
     if (!capture_.is_connected()) {
         if (ImGui::Button("Connect")) {
             auto err = capture_.connect(settings_.provider, settings_.bitrate,
-                                       settings_.mock_enabled, collector_);
+                                       settings_.mock_enabled, collector_,
+                                       settings_.bus_protocol);
             if (err.empty()) {
                 state_.connected = true;
             } else {
@@ -175,7 +201,60 @@ void GuiApp::render_can_tab() {
             open_file_dialog();
     }
 
+    // Restart capture button when buffer is full
+    if (!settings_.buffer_overwrite && collector_.is_buffer_full() &&
+        state_.playback == PlaybackState::STOPPED) {
+        ImGui::SameLine();
+        if (ImGui::Button("Restart Capture")) {
+            collector_.clear();
+            if (state_.data_source == DataSource::LIVE && capture_.is_connected()) {
+                auto err = capture_.start(collector_);
+                if (err.empty())
+                    state_.playback = PlaybackState::PLAYING;
+                else
+                    state_.error_message = err;
+            } else if (state_.data_source == DataSource::FILE && replay_.is_loaded()) {
+                replay_.rewind();
+                replay_.play();
+                state_.playback = PlaybackState::PLAYING;
+            }
+        }
+    }
+
+    // Replay position slider (file mode only)
+    if (state_.data_source == DataSource::FILE && replay_.is_loaded()) {
+        int pos = static_cast<int>(replay_.current_index());
+        int total = static_cast<int>(replay_.frame_count());
+        uint64_t dur = replay_.duration_us();
+
+        // Time label on the right
+        char time_buf[32] = {};
+        if (dur > 0 && total > 1) {
+            double progress = static_cast<double>(pos) / static_cast<double>(total - 1);
+            double cur_sec = (dur * progress) / 1000000.0;
+            double total_sec = dur / 1000000.0;
+            snprintf(time_buf, sizeof(time_buf), "%.1f / %.1fs", cur_sec, total_sec);
+        }
+        float time_w = (time_buf[0] != '\0') ? ImGui::CalcTextSize(time_buf).x + 12 : 0;
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - time_w);
+        if (ImGui::SliderInt("##ReplayPos", &pos, 0, total > 0 ? total - 1 : 0,
+                             "Frame %d")) {
+            replay_.seek(static_cast<size_t>(pos), collector_);
+        }
+        if (time_buf[0] != '\0') {
+            ImGui::SameLine();
+            ImGui::Text("%s", time_buf);
+        }
+    }
+
     ImGui::Separator();
+}
+
+// -----------------------------------------------------------------------
+// CAN Messages tab
+// -----------------------------------------------------------------------
+void GuiApp::render_can_tab() {
+    ImGui::SetWindowFontScale(settings_.font_scale_can);
 
     // Filter controls
     ImGui::Checkbox("Changed only", &settings_.show_changed_only);
@@ -185,19 +264,70 @@ void GuiApp::render_can_tab() {
     if (ImGui::InputInt("Last N", &n))
         settings_.change_filter_n = static_cast<uint32_t>(std::clamp(n, 1, 100));
 
-    // ID filter controls
+    // OBD display filter
     ImGui::SameLine();
     {
-        int fm = static_cast<int>(settings_.id_filter_mode);
-        ImGui::RadioButton("Exclude IDs", &fm, 0); ImGui::SameLine();
-        ImGui::RadioButton("Include IDs", &fm, 1);
-        settings_.id_filter_mode = static_cast<IdFilterMode>(fm);
+        const char* obd_modes[] = { "OBD + Broadcast", "OBD Only", "Broadcast Only" };
+        int obd_sel = static_cast<int>(settings_.obd_mode);
+        ImGui::SetNextItemWidth(150);
+        if (ImGui::Combo("Display Filter", &obd_sel, obd_modes, 3))
+            settings_.obd_mode = static_cast<ObdDisplayMode>(obd_sel);
+    }
+
+    // ID filter management
+    {
+        static bool show_filter_popup = false;
+        ImGui::SameLine();
         if (!settings_.id_filter_list.empty()) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("(%d IDs)", static_cast<int>(settings_.id_filter_list.size()));
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Clear Filter"))
-                settings_.id_filter_list.clear();
+            const char* mode_label = (settings_.id_filter_mode == IdFilterMode::EXCLUDE)
+                ? "Exclude" : "Include";
+            char btn_label[64];
+            snprintf(btn_label, sizeof(btn_label), "Filters: %s %d IDs###FilterBtn",
+                     mode_label, static_cast<int>(settings_.id_filter_list.size()));
+            if (ImGui::SmallButton(btn_label))
+                show_filter_popup = true;
+        } else {
+            ImGui::TextDisabled("No ID filter");
+        }
+
+        if (show_filter_popup) {
+            ImGui::SetNextWindowSize(ImVec2(260, 300), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("ID Filter", &show_filter_popup)) {
+                const char* mode_label = (settings_.id_filter_mode == IdFilterMode::EXCLUDE)
+                    ? "Excluding" : "Including only";
+                ImGui::Text("Mode: %s", mode_label);
+                ImGui::Separator();
+
+                if (ImGui::Button("Clear All")) {
+                    settings_.id_filter_list.clear();
+                    show_filter_popup = false;
+                }
+                ImGui::SameLine();
+                if (settings_.id_filter_mode == IdFilterMode::EXCLUDE) {
+                    if (ImGui::Button("Switch to Include"))
+                        settings_.id_filter_mode = IdFilterMode::INCLUDE;
+                } else {
+                    if (ImGui::Button("Switch to Exclude"))
+                        settings_.id_filter_mode = IdFilterMode::EXCLUDE;
+                }
+                ImGui::Separator();
+
+                // List each filtered ID with a remove button
+                int remove_idx = -1;
+                for (int i = 0; i < static_cast<int>(settings_.id_filter_list.size()); ++i) {
+                    ImGui::PushID(i);
+                    if (ImGui::SmallButton("X"))
+                        remove_idx = i;
+                    ImGui::SameLine();
+                    ImGui::Text("0x%03X", settings_.id_filter_list[i]);
+                    ImGui::PopID();
+                }
+                if (remove_idx >= 0) {
+                    settings_.id_filter_list.erase(
+                        settings_.id_filter_list.begin() + remove_idx);
+                }
+            }
+            ImGui::End();
         }
     }
 
@@ -209,59 +339,132 @@ void GuiApp::render_can_tab() {
                                     settings_.obd_mode,
                                     settings_.id_filter_mode,
                                     settings_.id_filter_list);
-    render_can_messages_panel(rows, state_, collector_, settings_);
+    render_can_messages_panel(rows, state_, collector_, settings_, show_graph_);
 
     // Watchdog panel
     if (show_watchdog_) {
-        auto watched = collector_.watchdog_snapshot();
-        if (!watched.empty()) {
+        collector_.set_watchdog_history_size(settings_.watchdog_history_size);
+        auto wd_snaps = collector_.watchdog_detail_snapshot();
+        if (!wd_snaps.empty()) {
             ImGui::Separator();
-            render_watchdog_panel(watched, collector_);
+            render_watchdog_panel(wd_snaps, collector_, settings_);
         }
     }
+
+    ImGui::SetWindowFontScale(1.0f);
+}
+
+// -----------------------------------------------------------------------
+// Decode OBD PID rows from buffered frames (for recordings / offline view)
+// -----------------------------------------------------------------------
+static std::vector<ObdPidRow> decode_obd_from_buffer(const std::vector<CanFrame>& frames) {
+    // Map PID -> latest decoded row
+    std::unordered_map<uint8_t, ObdPidRow> pid_map;
+
+    for (auto& f : frames) {
+        // OBD response IDs: 0x7E8ÔÇô0x7EF
+        if (f.arbitration_id < 0x7E8 || f.arbitration_id > 0x7EF) continue;
+        if (f.dlc < 4) continue;
+
+        // ISO-TP single frame: data[0] = length, data[1] = mode+0x40, data[2] = PID, data[3..] = value bytes
+        uint8_t resp_mode = f.data[1];
+        if (resp_mode != 0x41) continue; // Only Mode $01 responses
+
+        uint8_t pid = f.data[2];
+        const PidDefinition* def = pid_lookup(0x01, pid);
+        if (!def) continue;
+
+        uint8_t data_len = std::min<uint8_t>(f.data[0] - 2, static_cast<uint8_t>(f.dlc - 3));
+        if (data_len == 0 || data_len > 4) continue;
+
+        double value = decode_pid_value(&f.data[3], data_len, def->formula);
+
+        auto& row = pid_map[pid];
+        bool changed = (row.pid == pid && row.value != value);
+        row.pid   = pid;
+        row.name  = def->name;
+        row.value = value;
+        row.unit  = def->unit;
+        row.value_changed = changed;
+
+        // Raw hex
+        std::string hex;
+        for (uint8_t i = 0; i < data_len; ++i) {
+            char buf[4];
+            snprintf(buf, sizeof(buf), "%02X ", f.data[3 + i]);
+            hex += buf;
+        }
+        row.raw_hex = hex;
+    }
+
+    std::vector<ObdPidRow> result;
+    result.reserve(pid_map.size());
+    for (auto& [pid, row] : pid_map)
+        result.push_back(std::move(row));
+    std::sort(result.begin(), result.end(),
+              [](const ObdPidRow& a, const ObdPidRow& b) { return a.pid < b.pid; });
+    return result;
 }
 
 // -----------------------------------------------------------------------
 // OBD Data tab
 // -----------------------------------------------------------------------
 void GuiApp::render_obd_tab() {
-    // OBD start / stop
-    if (!capture_.is_connected()) {
-        ImGui::TextDisabled("Not connected.");
-    } else {
-        if (!obd_.is_streaming()) {
-            if (ImGui::Button("Start OBD")) {
-                auto* ch = capture_.channel();
-                if (ch)
-                    obd_.start_streaming(ch, settings_.obd_pids,
-                                         settings_.obd_interval_ms, &collector_);
-            }
+    ImGui::SetWindowFontScale(settings_.font_scale_obd);
+
+    // Live OBD start / stop controls
+    if (state_.data_source == DataSource::LIVE) {
+        if (!capture_.is_connected()) {
+            ImGui::TextDisabled("Not connected.");
         } else {
-            if (ImGui::Button("Stop OBD"))
-                obd_.stop_streaming();
+            if (!obd_.is_streaming()) {
+                if (ImGui::Button("Start OBD Polling")) {
+                    auto* ch = capture_.channel();
+                    if (ch)
+                        obd_.start_streaming(ch, settings_.obd_pids,
+                                             settings_.obd_interval_ms, &collector_);
+                }
+            } else {
+                if (ImGui::Button("Stop OBD Polling"))
+                    obd_.stop_streaming();
+
+                // Auto-restart if PIDs or interval changed while streaming
+                bool pids_changed = (obd_.current_pids() != settings_.obd_pids);
+                bool interval_changed = (obd_.current_interval_ms() != settings_.obd_interval_ms);
+                if (pids_changed || interval_changed) {
+                    obd_.stop_streaming();
+                    auto* ch = capture_.channel();
+                    if (ch)
+                        obd_.start_streaming(ch, settings_.obd_pids,
+                                             settings_.obd_interval_ms, &collector_);
+                }
+            }
         }
+    } else {
+        ImGui::TextDisabled("Showing OBD data decoded from recording.");
     }
-
-    ImGui::SameLine();
-
-    // OBD display filter
-    const char* obd_modes[] = { "OBD + Broadcast", "OBD Only", "Broadcast Only" };
-    int obd_sel = static_cast<int>(settings_.obd_mode);
-    ImGui::SetNextItemWidth(150);
-    if (ImGui::Combo("Display Filter", &obd_sel, obd_modes, 3))
-        settings_.obd_mode = static_cast<ObdDisplayMode>(obd_sel);
 
     ImGui::Separator();
 
-    auto obd_rows = obd_.snapshot();
-    render_obd_data_panel(obd_rows);
+    // Show OBD data: live snapshot if streaming, otherwise decode from buffer
+    std::vector<ObdPidRow> obd_rows;
+    if (obd_.is_streaming()) {
+        obd_rows = obd_.snapshot();
+    } else {
+        auto frames = collector_.buffer_contents();
+        obd_rows = decode_obd_from_buffer(frames);
+    }
+    render_obd_data_panel(obd_rows, settings_, show_graph_);
+
+    ImGui::SetWindowFontScale(1.0f);
 }
 
 // -----------------------------------------------------------------------
 // DTC tab
 // -----------------------------------------------------------------------
 void GuiApp::render_dtc_tab() {
-    render_dtc_panel(dtc_state_, capture_, state_);
+    bool file_mode = (state_.data_source == DataSource::FILE);
+    render_dtc_panel(dtc_state_, capture_, state_, file_mode);
 }
 
 // -----------------------------------------------------------------------
@@ -386,6 +589,18 @@ void GuiApp::save_buffer_dialog() {
         std::string path(filename);
         std::string ext = path.substr(path.find_last_of('.') + 1);
 
+        // Rebase frame timestamps: the writer uses host_timestamp_us() as
+        // session start, so shift all frames so the first frame's relative
+        // time is ~0 and inter-frame deltas are preserved.
+        if (!frames.empty()) {
+            uint64_t now = host_timestamp_us();
+            uint64_t base = frames[0].host_timestamp_us;
+            for (auto& f : frames) {
+                uint64_t offset = f.host_timestamp_us - base;
+                f.host_timestamp_us = now + offset;
+            }
+        }
+
         SessionStatus dummy_status;
         try {
             if (ext == "jsonl") {
@@ -413,15 +628,21 @@ void GuiApp::save_buffer_dialog() {
 // Error popup
 // -----------------------------------------------------------------------
 void GuiApp::show_error_popup() {
+    static std::string popup_error;
     if (!state_.error_message.empty()) {
+        popup_error = state_.error_message;
+        state_.error_message.clear();
         ImGui::OpenPopup("Error");
-        state_.error_message.clear(); // consume — will be shown in popup
     }
 
     if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("An error occurred. Check the log for details.");
-        if (ImGui::Button("OK", ImVec2(120, 0)))
+        ImGui::TextWrapped("%s", popup_error.c_str());
+        ImGui::Spacing();
+        ImGui::TextDisabled("See canmatik_gui.log for details.");
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
+            popup_error.clear();
             ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 }

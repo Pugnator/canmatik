@@ -19,10 +19,11 @@ class CaptureController {
 public:
     CaptureController() = default;
 
-    /// Connect to a provider and open a CAN channel.
+    /// Connect to a provider and open a channel.
     /// @return Empty on success, error message on failure.
     std::string connect(const std::string& provider_name, uint32_t bitrate,
-                        bool mock, FrameCollector& collector);
+                        bool mock, FrameCollector& collector,
+                        BusProtocol protocol = BusProtocol::CAN);
 
     /// Start capturing frames into the collector.
     std::string start(FrameCollector& collector);

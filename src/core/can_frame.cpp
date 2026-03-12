@@ -16,6 +16,10 @@ std::string validate_frame(const CanFrame& frame) {
         return std::format("Extended frame ID 0x{:X} exceeds max 0x{:X}",
                            frame.arbitration_id, kMaxExtendedId);
     }
+    if (frame.type == FrameType::J1850 && frame.arbitration_id > kMaxJ1850Id) {
+        return std::format("J1850 frame ID 0x{:X} exceeds max 0x{:X}",
+                           frame.arbitration_id, kMaxJ1850Id);
+    }
 
     // DLC range check
     const uint8_t max_dlc = (frame.type == FrameType::FD) ? kCanFdMaxDlc : kClassicCanMaxDlc;
@@ -44,6 +48,8 @@ bool is_valid_id(uint32_t id, FrameType type) {
         case FrameType::Error:
         case FrameType::Remote:
             return id <= kMaxExtendedId;  // Error/Remote can use either range
+        case FrameType::J1850:
+            return id <= kMaxJ1850Id;
     }
     return false;
 }
@@ -55,6 +61,7 @@ const char* frame_type_to_string(FrameType type) {
         case FrameType::FD:       return "FD";
         case FrameType::Error:    return "Err";
         case FrameType::Remote:   return "Rtr";
+        case FrameType::J1850:    return "J1850";
     }
     return "???";
 }

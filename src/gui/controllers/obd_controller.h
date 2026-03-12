@@ -52,6 +52,10 @@ public:
     /// Get current decoded values (thread-safe snapshot).
     std::vector<ObdPidRow> snapshot();
 
+    /// Return the PIDs and interval currently being streamed.
+    std::vector<uint8_t> current_pids() const { std::lock_guard lock(mu_); return active_pids_; }
+    uint32_t current_interval_ms() const { return active_interval_ms_; }
+
 private:
     void worker(IChannel* channel,
                 std::vector<uint8_t> pids,
@@ -62,6 +66,8 @@ private:
     std::thread thread_;
     mutable std::mutex mu_;
     std::vector<ObdPidRow> rows_;
+    std::vector<uint8_t> active_pids_;
+    uint32_t active_interval_ms_ = 0;
     double start_time_ = 0.0;
 };
 

@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
 
 namespace canmatik {
@@ -25,10 +26,18 @@ std::string GuiSettings::load(const std::string& path) {
     if (j.contains("provider"))          provider          = j["provider"].get<std::string>();
     if (j.contains("bitrate"))           bitrate           = j["bitrate"].get<uint32_t>();
     if (j.contains("mock_enabled"))      mock_enabled      = j["mock_enabled"].get<bool>();
+    if (j.contains("bus_protocol")) {
+        auto bp = j["bus_protocol"].get<std::string>();
+        if (bp == "j1850_vpw")      bus_protocol = BusProtocol::J1850_VPW;
+        else if (bp == "j1850_pwm") bus_protocol = BusProtocol::J1850_PWM;
+        else                        bus_protocol = BusProtocol::CAN;
+    }
     if (j.contains("buffer_capacity"))   buffer_capacity   = j["buffer_capacity"].get<uint32_t>();
+    if (j.contains("buffer_overwrite"))  buffer_overwrite  = j["buffer_overwrite"].get<bool>();
     if (j.contains("change_filter_n"))   change_filter_n   = j["change_filter_n"].get<uint32_t>();
     if (j.contains("show_changed_only")) show_changed_only = j["show_changed_only"].get<bool>();
     if (j.contains("obd_interval_ms"))   obd_interval_ms   = j["obd_interval_ms"].get<uint32_t>();
+    if (j.contains("watchdog_history_size")) watchdog_history_size = j["watchdog_history_size"].get<uint32_t>();
     if (j.contains("window_width"))      window_width      = j["window_width"].get<int>();
     if (j.contains("window_height"))     window_height     = j["window_height"].get<int>();
     if (j.contains("last_file_path"))    last_file_path    = j["last_file_path"].get<std::string>();
@@ -69,6 +78,28 @@ std::string GuiSettings::load(const std::string& path) {
         }
     }
 
+    // Load font scales
+    if (j.contains("font_scale_can")) font_scale_can = std::clamp(j["font_scale_can"].get<float>(), 0.5f, 3.0f);
+    if (j.contains("font_scale_obd")) font_scale_obd = std::clamp(j["font_scale_obd"].get<float>(), 0.5f, 3.0f);
+
+    // Load font colors
+    auto load_color = [&](const char* key, float* c) {
+        if (j.contains(key) && j[key].is_array() && j[key].size() >= 4) {
+            for (int i = 0; i < 4; ++i) {
+                if (j[key][i].is_number())
+                    c[i] = static_cast<float>(j[key][i].get<double>());
+            }
+        }
+    };
+    load_color("color_can_new",      color_can_new);
+    load_color("color_can_changed",  color_can_changed);
+    load_color("color_can_dlc",      color_can_dlc);
+    load_color("color_can_default",  color_can_default);
+    load_color("color_can_watched",  color_can_watched);
+    load_color("color_obd_changed",  color_obd_changed);
+    load_color("color_obd_normal",   color_obd_normal);
+    load_color("color_obd_dim",      color_obd_dim);
+
     // Clamp buffer capacity
     if (buffer_capacity < 1000)     buffer_capacity = 1000;
     if (buffer_capacity > 10000000) buffer_capacity = 10000000;
@@ -99,7 +130,14 @@ std::string GuiSettings::save(const std::string& path) const {
     j["provider"]          = provider;
     j["bitrate"]           = bitrate;
     j["mock_enabled"]      = mock_enabled;
+    {
+        const char* bp_str = "can";
+        if (bus_protocol == BusProtocol::J1850_VPW) bp_str = "j1850_vpw";
+        else if (bus_protocol == BusProtocol::J1850_PWM) bp_str = "j1850_pwm";
+        j["bus_protocol"] = bp_str;
+    }
     j["buffer_capacity"]   = buffer_capacity;
+    j["buffer_overwrite"]  = buffer_overwrite;
     j["change_filter_n"]   = change_filter_n;
     j["show_changed_only"] = show_changed_only;
     j["id_filter_mode"]    = (id_filter_mode == IdFilterMode::INCLUDE) ? "include" : "exclude";
@@ -110,6 +148,7 @@ std::string GuiSettings::save(const std::string& path) const {
     }
     j["obd_mode"]          = obd_mode_string(obd_mode);
     j["obd_interval_ms"]   = obd_interval_ms;
+    j["watchdog_history_size"] = watchdog_history_size;
     j["color_scheme"]      = color_scheme_string(color_scheme);
     j["window_width"]      = window_width;
     j["window_height"]     = window_height;
@@ -118,6 +157,25 @@ std::string GuiSettings::save(const std::string& path) const {
     json pids = json::array();
     for (auto p : obd_pids) pids.push_back(static_cast<int>(p));
     j["obd_pids"] = pids;
+
+    // Save font scales
+    j["font_scale_can"] = font_scale_can;
+    j["font_scale_obd"] = font_scale_obd;
+
+    // Save font colors
+    auto save_color = [&](const char* key, const float* c) {
+        json arr = json::array();
+        for (int i = 0; i < 4; ++i) arr.push_back(c[i]);
+        j[key] = arr;
+    };
+    save_color("color_can_new",      color_can_new);
+    save_color("color_can_changed",  color_can_changed);
+    save_color("color_can_dlc",      color_can_dlc);
+    save_color("color_can_default",  color_can_default);
+    save_color("color_can_watched",  color_can_watched);
+    save_color("color_obd_changed",  color_obd_changed);
+    save_color("color_obd_normal",   color_obd_normal);
+    save_color("color_obd_dim",      color_obd_dim);
 
     std::ofstream f(path);
     if (!f.is_open()) return "Cannot write to " + path;

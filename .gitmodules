@@ -2,3 +2,7 @@
 	path = third_party/tinylog
 	url = https://github.com/Pugnator/TinyLog.git
 	ignore = dirty
+[submodule "third_party/imgui"]
+	path = third_party/imgui
+	url = https://github.com/ocornut/imgui.git
+	ignore = dirty

@@ -9,6 +9,13 @@
 
 namespace canmatik {
 
+/// Bus protocol selector (CAN vs J1850).
+enum class BusProtocol : uint8_t {
+    CAN        = 0,  ///< Controller Area Network (classic / FD)
+    J1850_VPW  = 1,  ///< SAE J1850 Variable Pulse Width (10.4 kbps, single-wire)
+    J1850_PWM  = 2,  ///< SAE J1850 Pulse Width Modulation (41.6 kbps, dual-wire)
+};
+
 /// CAN frame type discriminator.
 enum class FrameType : uint8_t {
     Standard  = 0,  ///< 11-bit arbitration ID, classic CAN
@@ -16,6 +23,7 @@ enum class FrameType : uint8_t {
     FD        = 2,  ///< CAN FD frame (future)
     Error     = 3,  ///< Error frame reported by adapter
     Remote    = 4,  ///< Remote Transmission Request
+    J1850     = 5,  ///< J1850 VPW/PWM frame (3-byte header → 24-bit ID)
 };
 
 /// Maximum payload sizes.
@@ -25,6 +33,7 @@ inline constexpr uint8_t kCanFdMaxDlc      = 64;
 /// Maximum valid arbitration IDs.
 inline constexpr uint32_t kMaxStandardId = 0x7FFu;
 inline constexpr uint32_t kMaxExtendedId = 0x1FFFFFFFu;
+inline constexpr uint32_t kMaxJ1850Id   = 0xFFFFFFu;  ///< 24-bit (priority | target | source)
 
 /// A single CAN frame as observed on the bus. Immutable once created.
 struct CanFrame {

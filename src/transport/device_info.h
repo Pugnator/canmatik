@@ -15,6 +15,8 @@ struct DeviceInfo {
     std::string dll_path;         ///< Full path to J2534 DLL on host
     bool supports_can      = false; ///< Provider advertises CAN protocol support
     bool supports_iso15765 = false; ///< Provider advertises ISO 15765 support
+    bool supports_j1850_vpw = false; ///< Provider advertises J1850 VPW support
+    bool supports_j1850_pwm = false; ///< Provider advertises J1850 PWM support
 };
 
 } // namespace canmatik

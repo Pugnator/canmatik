@@ -96,4 +96,24 @@ void ReplayController::tick(uint64_t delta_us, FrameCollector& collector) {
     }
 }
 
+void ReplayController::seek(size_t frame_index, FrameCollector& collector) {
+    if (frames_.empty()) return;
+    frame_index = std::min(frame_index, frames_.size() - 1);
+
+    // Clear and replay all frames up to the target index
+    collector.clear();
+    for (size_t i = 0; i <= frame_index; ++i)
+        collector.pushFrame(frames_[i]);
+
+    current_ = frame_index;
+    // Set elapsed_us_ so tick() continues from the right spot
+    uint64_t base = frames_[0].host_timestamp_us;
+    elapsed_us_ = static_cast<double>(frames_[current_].host_timestamp_us - base);
+}
+
+uint64_t ReplayController::duration_us() const {
+    if (frames_.size() < 2) return 0;
+    return frames_.back().host_timestamp_us - frames_.front().host_timestamp_us;
+}
+
 } // namespace canmatik
