@@ -16,6 +16,8 @@
 
 #include <string>
 #include <filesystem>
+#include <stdexcept>
+#include <shlobj.h>
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
@@ -78,9 +80,30 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 }
 
 // ---------------------------------------------------------------------------
+// Writable app-data directory: %LOCALAPPDATA%\CANmatik
+// Avoids UAC errors when installed under Program Files.
+// ---------------------------------------------------------------------------
+static std::filesystem::path get_appdata_dir() {
+    char buf[MAX_PATH] = {};
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, buf))) {
+        auto dir = std::filesystem::path(buf) / "CANmatik";
+        std::filesystem::create_directories(dir);
+        return dir;
+    }
+    // Fallback: %TEMP%
+    if (const char* tmp = std::getenv("TEMP"))
+        return std::filesystem::path(tmp);
+    return std::filesystem::path(".");
+}
+
+// ---------------------------------------------------------------------------
 // gui_main — called from the unified entry point
 // ---------------------------------------------------------------------------
 int gui_main(HINSTANCE hInstance, int nCmdShow) {
+  try {
+    // Writable directory for logs and settings
+    auto app_dir = get_appdata_dir();
+
     // Initialize TinyLog: console + file output
     {
         auto& logger = Log::get();
@@ -96,19 +119,14 @@ int gui_main(HINSTANCE hInstance, int nCmdShow) {
         rotation.max_file_size    = 10485760;
         rotation.max_backup_count = 5;
         rotation.compress         = false;
-        logger.configure(TraceType::file, "canmatik_gui.log", rotation);
+        auto log_path = (app_dir / "canmatik_gui.log").string();
+        logger.configure(TraceType::file, log_path, rotation);
         LOG_INFO("CANmatik GUI starting");
+        LOG_INFO("App data dir: %s", app_dir.string().c_str());
     }
 
-    // Compute absolute settings path next to the exe
-    std::string settings_path = "canmatik_gui.json";
-    {
-        char exe_path[MAX_PATH] = {};
-        if (GetModuleFileNameA(nullptr, exe_path, MAX_PATH)) {
-            std::filesystem::path p(exe_path);
-            settings_path = (p.parent_path() / "canmatik_gui.json").string();
-        }
-    }
+    // Settings file in writable directory
+    std::string settings_path = (app_dir / "canmatik_gui.json").string();
 
     // GuiApp manages all state
     canmatik::GuiApp app;
@@ -137,8 +155,41 @@ int gui_main(HINSTANCE hInstance, int nCmdShow) {
 
     // OpenGL context
     if (!CreateGLContext(hWnd)) {
+        MessageBoxW(hWnd, L"Failed to create OpenGL context.\n\n"
+                    L"Make sure your graphics driver supports OpenGL 2.0+.\n"
+                    L"Update your GPU driver and try again.",
+                    L"CANmatik — OpenGL Error", MB_OK | MB_ICONERROR);
         DestroyWindow(hWnd);
         return 1;
+    }
+
+    // Check actual OpenGL version — need at least 2.0 for ImGui shaders
+    const char* gl_version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    const char* gl_renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    LOG_INFO("OpenGL version: %s", gl_version ? gl_version : "unknown");
+    LOG_INFO("OpenGL renderer: %s", gl_renderer ? gl_renderer : "unknown");
+
+    // Pick the best GLSL version the driver actually supports
+    const char* glsl_version = "#version 130";  // default: OpenGL 3.0+
+    if (gl_version) {
+        int major = 0, minor = 0;
+        sscanf(gl_version, "%d.%d", &major, &minor);
+        if (major < 2) {
+            wchar_t msg[512];
+            swprintf(msg, 512, L"Your GPU reports OpenGL %hs\n"
+                     L"(renderer: %hs)\n\n"
+                     L"CANmatik requires at least OpenGL 2.0.\n"
+                     L"Please update your graphics driver.",
+                     gl_version, gl_renderer ? gl_renderer : "unknown");
+            MessageBoxW(hWnd, msg, L"CANmatik — Unsupported GPU", MB_OK | MB_ICONERROR);
+            CleanupGL(hWnd);
+            DestroyWindow(hWnd);
+            return 1;
+        }
+        if (major == 2) {
+            glsl_version = "#version 110";  // OpenGL 2.x
+        }
+        // OpenGL 3.0+ keeps "#version 130"
     }
 
     ShowWindow(hWnd, nCmdShow);
@@ -152,7 +203,7 @@ int gui_main(HINSTANCE hInstance, int nCmdShow) {
     ImGui::StyleColorsDark();
 
     ImGui_ImplWin32_Init(hWnd);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Apply color scheme (settings already loaded above)
     app.apply_color_scheme();
@@ -213,4 +264,14 @@ int gui_main(HINSTANCE hInstance, int nCmdShow) {
     UnregisterClassW(CLASS_NAME, hInstance);
 
     return 0;
+  } catch (const std::exception& ex) {
+    std::string msg = "CANmatik encountered a fatal error:\n\n";
+    msg += ex.what();
+    MessageBoxA(nullptr, msg.c_str(), "CANmatik — Fatal Error", MB_OK | MB_ICONERROR);
+    return 1;
+  } catch (...) {
+    MessageBoxA(nullptr, "CANmatik encountered an unknown fatal error.",
+                "CANmatik — Fatal Error", MB_OK | MB_ICONERROR);
+    return 1;
+  }
 }
