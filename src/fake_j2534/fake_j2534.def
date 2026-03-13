@@ -1,17 +1,25 @@
 ; fake_j2534.def — Explicit export names for J2534 Pass-Thru API
 ; Ensures tools see clean undecorated names (no @N stdcall mangling).
+; Ordinals 1-14 match the original Openport 2.0 op20pt32.dll.
 LIBRARY fake_j2534
 EXPORTS
-    PassThruOpen
-    PassThruClose
-    PassThruConnect
-    PassThruDisconnect
-    PassThruReadMsgs
-    PassThruWriteMsgs
-    PassThruStartMsgFilter
-    PassThruStopMsgFilter
-    PassThruStartPeriodicMsg
-    PassThruStopPeriodicMsg
-    PassThruIoctl
-    PassThruReadVersion
-    PassThruGetLastError
+    PassThruClose               @1
+    PassThruConnect             @2
+    PassThruDisconnect          @3
+    PassThruGetLastError        @4
+    PassThruIoctl               @5
+    PassThruOpen                @6
+    PassThruReadMsgs            @7
+    PassThruReadVersion         @8
+    PassThruSetProgrammingVoltage @9
+    PassThruStartMsgFilter      @10
+    PassThruStartPeriodicMsg    @11
+    PassThruStopMsgFilter       @12
+    PassThruStopPeriodicMsg     @13
+    PassThruWriteMsgs           @14
+    PassThruLoadLibrary         @15
+    PassThruUnloadLibrary       @16
+    PassThruScanForDevices      @17
+    PassThruGetNextDevice       @18
+    PassThruSelect              @19
+    PassThruQueueMsgs           @20

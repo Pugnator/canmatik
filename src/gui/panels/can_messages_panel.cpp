@@ -19,7 +19,8 @@ void render_can_messages_panel(const std::vector<MessageRow>& rows,
                                GuiState& state,
                                FrameCollector& collector,
                                GuiSettings& settings,
-                               bool show_graph) {
+                               bool show_graph,
+                               bool raw_stream) {
     const ImVec4 kColorNew     = to_imvec4(settings.color_can_new);
     const ImVec4 kColorChanged = to_imvec4(settings.color_can_changed);
     const ImVec4 kColorDlc     = to_imvec4(settings.color_can_dlc);
@@ -51,7 +52,8 @@ void render_can_messages_panel(const std::vector<MessageRow>& rows,
         ImGui::TableSetupColumn("DLC",    ImGuiTableColumnFlags_WidthFixed, 40);
         ImGui::TableSetupColumn("Data",   ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Time",   ImGuiTableColumnFlags_WidthFixed, 80);
-        ImGui::TableSetupColumn("Count",  ImGuiTableColumnFlags_WidthFixed, 60);
+        ImGui::TableSetupColumn(raw_stream ? "#" : "Count",
+                                ImGuiTableColumnFlags_WidthFixed, 60);
         ImGui::TableSetupColumn("Watch",  ImGuiTableColumnFlags_WidthFixed, 20);
         ImGui::TableHeadersRow();
 
@@ -81,8 +83,20 @@ void render_can_messages_panel(const std::vector<MessageRow>& rows,
             snprintf(sel_id, sizeof(sel_id), "##sel%d", static_cast<int>(i));
             if (ImGui::Selectable(sel_id, is_selected,
                                   ImGuiSelectableFlags_SpanAllColumns |
-                                  ImGuiSelectableFlags_AllowOverlap)) {
+                                  ImGuiSelectableFlags_AllowOverlap |
+                                  ImGuiSelectableFlags_AllowDoubleClick)) {
                 state.selected_row = row.arb_id;
+                if (ImGui::IsMouseDoubleClicked(0)) {
+                    // Format: "0x7E0  8  02 01 00 00 00 00 00 00"
+                    char buf[128];
+                    int pos = snprintf(buf, sizeof(buf), "0x%03X  %u  ",
+                                       row.arb_id, row.dlc);
+                    for (uint8_t b = 0; b < row.dlc && b < 8; ++b) {
+                        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                                        "%s%02X", b ? " " : "", row.data[b]);
+                    }
+                    ImGui::SetClipboardText(buf);
+                }
             }
 
             // Right-click context menu

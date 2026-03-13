@@ -15,6 +15,7 @@
 #include "core/log_macros.h"
 
 #include <string>
+#include <filesystem>
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
@@ -77,10 +78,9 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 }
 
 // ---------------------------------------------------------------------------
-// WinMain
+// gui_main — called from the unified entry point
 // ---------------------------------------------------------------------------
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/,
-                   LPSTR /*lpCmdLine*/, int nCmdShow) {
+int gui_main(HINSTANCE hInstance, int nCmdShow) {
     // Initialize TinyLog: console + file output
     {
         auto& logger = Log::get();
@@ -100,8 +100,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/,
         LOG_INFO("CANmatik GUI starting");
     }
 
+    // Compute absolute settings path next to the exe
+    std::string settings_path = "canmatik_gui.json";
+    {
+        char exe_path[MAX_PATH] = {};
+        if (GetModuleFileNameA(nullptr, exe_path, MAX_PATH)) {
+            std::filesystem::path p(exe_path);
+            settings_path = (p.parent_path() / "canmatik_gui.json").string();
+        }
+    }
+
     // GuiApp manages all state
     canmatik::GuiApp app;
+    app.init(settings_path);
 
     // Register window class
     const wchar_t CLASS_NAME[] = L"CANmatikGUI";
@@ -143,9 +154,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/,
     ImGui_ImplWin32_Init(hWnd);
     ImGui_ImplOpenGL3_Init("#version 130");
 
-    // Initialize app (loads settings + applies color scheme)
-    app.init("canmatik_gui.json");
+    // Apply color scheme (settings already loaded above)
     app.apply_color_scheme();
+
+    // Resize window to saved dimensions
+    {
+        RECT rc;
+        GetWindowRect(hWnd, &rc);
+        int cur_w = rc.right - rc.left;
+        int cur_h = rc.bottom - rc.top;
+        if (cur_w != app.window_width() || cur_h != app.window_height()) {
+            SetWindowPos(hWnd, nullptr, 0, 0,
+                         app.window_width(), app.window_height(),
+                         SWP_NOMOVE | SWP_NOZORDER);
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Main loop

@@ -26,6 +26,9 @@ std::string GuiSettings::load(const std::string& path) {
     if (j.contains("provider"))          provider          = j["provider"].get<std::string>();
     if (j.contains("bitrate"))           bitrate           = j["bitrate"].get<uint32_t>();
     if (j.contains("mock_enabled"))      mock_enabled      = j["mock_enabled"].get<bool>();
+    if (j.contains("proxy_enabled"))     proxy_enabled     = j["proxy_enabled"].get<bool>();
+    if (j.contains("proxy_terminated"))  proxy_terminated  = j["proxy_terminated"].get<bool>();
+    if (j.contains("proxy_target"))      proxy_target      = j["proxy_target"].get<std::string>();
     if (j.contains("bus_protocol")) {
         auto bp = j["bus_protocol"].get<std::string>();
         if (bp == "j1850_vpw")      bus_protocol = BusProtocol::J1850_VPW;
@@ -130,6 +133,9 @@ std::string GuiSettings::save(const std::string& path) const {
     j["provider"]          = provider;
     j["bitrate"]           = bitrate;
     j["mock_enabled"]      = mock_enabled;
+    j["proxy_enabled"]     = proxy_enabled;
+    j["proxy_terminated"]  = proxy_terminated;
+    j["proxy_target"]      = proxy_target;
     {
         const char* bp_str = "can";
         if (bus_protocol == BusProtocol::J1850_VPW) bp_str = "j1850_vpw";

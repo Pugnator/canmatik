@@ -1,5 +1,5 @@
 /// @file main.cpp
-/// CANmatik CLI entry point.
+/// CANmatik CLI logic — called from the unified entry point.
 
 #include "cli/cli_app.h"
 
@@ -7,7 +7,7 @@
 #include <iostream>
 #include <cstdlib>
 
-int main(int argc, char** argv) {
+int cli_main(int argc, char** argv) {
     canmatik::GlobalOptions globals;
 
     auto app = canmatik::build_cli(globals);

@@ -90,11 +90,14 @@ public:
     /// Push a frame (for replay controller bypass).
     void pushFrame(const CanFrame& frame);
 
-    /// Take a filtered snapshot for rendering.
+    /// Take a filtered snapshot for rendering (grouped by ID).
     std::vector<MessageRow> snapshot(bool changed_only, uint32_t change_n,
                                      ObdDisplayMode obd_mode,
                                      IdFilterMode id_filter_mode = IdFilterMode::EXCLUDE,
                                      const std::vector<uint32_t>& id_filter_list = {}) const;
+
+    /// Take a raw chronological snapshot from the ring buffer (most recent N).
+    std::vector<MessageRow> raw_snapshot(uint32_t max_rows = 5000) const;
 
     /// Take a watchdog-only snapshot.
     std::vector<MessageRow> watchdog_snapshot() const;

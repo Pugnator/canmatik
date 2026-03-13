@@ -19,6 +19,11 @@ struct GuiSettings {
     bool        mock_enabled    = false;
     BusProtocol bus_protocol    = BusProtocol::CAN;
 
+    // Proxy mode: expose fake J2534 DLL, forward to real adapter
+    bool        proxy_enabled   = false;
+    bool        proxy_terminated = false;  ///< true = terminated mode (no real adapter)
+    std::string proxy_target;              ///< real J2534 provider to forward to
+
     // Capture buffer
     uint32_t    buffer_capacity  = 100000;
     bool        buffer_overwrite = false;   ///< true = ring-buffer wraps; false = stop when full

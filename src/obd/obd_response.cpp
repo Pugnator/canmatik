@@ -5,14 +5,15 @@
 #include "obd/iso15765.h"
 
 #include <cstring>
+#include <format>
 
 namespace canmatik {
 
 Result<ObdResponse>
 parse_obd_response(const CanFrame& frame, uint8_t expected_mode, uint8_t expected_pid) {
     if (!iso15765::is_response_id(frame.arbitration_id)) {
-        return Result<ObdResponse>::error("CAN ID 0x" + std::to_string(frame.arbitration_id)
-                               + " is not a valid OBD response ID");
+        return Result<ObdResponse>::error(std::format(
+            "CAN ID 0x{:03X} is not a valid OBD response ID", frame.arbitration_id));
     }
 
     // Check for single frame PCI
@@ -21,8 +22,8 @@ parse_obd_response(const CanFrame& frame, uint8_t expected_mode, uint8_t expecte
     uint8_t payload_len = pci & 0x0F;
 
     if (pci_type != iso15765::kPciSingleFrame) {
-        return Result<ObdResponse>::error("expected single frame (PCI=0x0), got PCI=0x"
-                               + std::to_string(pci_type >> 4) + "0");
+        return Result<ObdResponse>::error(std::format(
+            "expected single frame (PCI=0x0), got PCI=0x{:X}0", pci_type >> 4));
     }
 
     if (payload_len < 2 || payload_len > 7) {
@@ -47,15 +48,15 @@ parse_obd_response(const CanFrame& frame, uint8_t expected_mode, uint8_t expecte
 
     // Validate mode + 0x40
     if (resp_mode != expected_mode + iso15765::kPositiveResponseOffset) {
-        return Result<ObdResponse>::error("response mode 0x" + std::to_string(resp_mode)
-                               + " does not match expected 0x"
-                               + std::to_string(expected_mode + iso15765::kPositiveResponseOffset));
+        return Result<ObdResponse>::error(std::format(
+            "response mode 0x{:02X} does not match expected 0x{:02X}",
+            resp_mode, expected_mode + iso15765::kPositiveResponseOffset));
     }
 
     // Validate PID echo
     if (resp_pid != expected_pid) {
-        return Result<ObdResponse>::error("response PID 0x" + std::to_string(resp_pid)
-                               + " does not match expected 0x" + std::to_string(expected_pid));
+        return Result<ObdResponse>::error(std::format(
+            "response PID 0x{:02X} does not match expected 0x{:02X}", resp_pid, expected_pid));
     }
 
     ObdResponse resp;

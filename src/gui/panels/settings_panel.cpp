@@ -2,6 +2,7 @@
 /// Settings tab implementation.
 
 #include "gui/panels/settings_panel.h"
+#include "proxy/proxy_registry.h"
 #include "obd/obd_session.h"
 #include "obd/pid_table.h"
 #include "imgui.h"
@@ -196,6 +197,196 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
 
     // Connect / Disconnect button (main one is on CAN tab)
     ImGui::TextDisabled(capture.is_connected() ? "Connected" : "Disconnected");
+
+    // ----- Proxy Mode section -----
+    ImGui::SeparatorText("Proxy Mode");
+    ImGui::TextDisabled("Expose a fake J2534 DLL for external tools.\n"
+                        "Traffic is shown in Bus Messages. API calls appear in Logs.");
+
+    // Mode radio buttons
+    ImGui::Checkbox("Terminated (no real adapter)", &settings.proxy_terminated);
+    if (settings.proxy_terminated) {
+        ImGui::TextDisabled("Simulates a J2534 interface with no hardware.\n"
+                            "Accepts all calls, displays TX data, returns empty reads.");
+    }
+
+    // Target provider selector (only in normal proxy mode)
+    static int proxy_target_idx = -1;
+    static bool proxy_scanned = false;
+
+    if (!settings.proxy_terminated) {
+        if (!proxy_scanned && !provider_names.empty()) {
+            for (int i = 0; i < static_cast<int>(provider_names.size()); ++i)
+                if (provider_names[i] == settings.proxy_target) proxy_target_idx = i;
+            proxy_scanned = true;
+        }
+
+        ImGui::SetNextItemWidth(260);
+        if (ImGui::BeginCombo("Target adapter",
+                (proxy_target_idx >= 0 && proxy_target_idx < static_cast<int>(provider_names.size()))
+                    ? provider_names[proxy_target_idx].c_str() : "<select adapter>")) {
+            for (int i = 0; i < static_cast<int>(provider_names.size()); ++i) {
+                bool selected = (i == proxy_target_idx);
+                if (ImGui::Selectable(provider_names[i].c_str(), selected)) {
+                    proxy_target_idx = i;
+                    settings.proxy_target = provider_names[i];
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    ImGui::Checkbox("Enable proxy", &settings.proxy_enabled);
+    if (settings.proxy_enabled && !settings.proxy_terminated && settings.proxy_target.empty())
+        ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Select a target adapter above to start proxy.");
+
+    ImGui::TextDisabled("Pipe: \\\\.\\pipe\\canmatik_proxy");
+
+    // --- Proxy DLL Installation ---
+    ImGui::SeparatorText("Proxy DLL Registration");
+    ImGui::TextDisabled("Register fake_j2534.dll in the Windows registry so\n"
+                        "external scan tools discover it as a J2534 interface.\n"
+                        "Registers under both PassThruSupport.04.04 and DeviceClasses.");
+
+    // Preset or custom name
+    static int preset_idx = 0;
+    static char custom_name[128] = "CANmatik Proxy";
+    static char custom_vendor[64] = "CANmatik";
+    static bool use_custom = false;
+    static std::string install_status;
+
+    ImGui::Checkbox("Custom name", &use_custom);
+
+    if (use_custom) {
+        ImGui::SetNextItemWidth(260);
+        ImGui::InputText("Interface name", custom_name, sizeof(custom_name));
+        ImGui::SetNextItemWidth(180);
+        ImGui::InputText("Vendor", custom_vendor, sizeof(custom_vendor));
+    } else {
+        // Preset combo
+        ImGui::SetNextItemWidth(260);
+        if (ImGui::BeginCombo("Interface preset",
+                (preset_idx >= 0 && preset_idx < kPresetCount)
+                    ? kPresets[preset_idx].name : "<select>")) {
+            for (int i = 0; i < kPresetCount; ++i) {
+                bool sel = (i == preset_idx);
+                char label[128];
+                snprintf(label, sizeof(label), "%s (%s)",
+                         kPresets[i].name, kPresets[i].vendor);
+                if (ImGui::Selectable(label, sel))
+                    preset_idx = i;
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        if (preset_idx >= 0 && preset_idx < kPresetCount && kPresets[preset_idx].dll_name)
+            ImGui::TextDisabled("Will deploy as %s in SysWOW64", kPresets[preset_idx].dll_name);
+    }
+
+    // DLL path
+    static std::string dll_path_cache = find_proxy_dll_path();
+    if (dll_path_cache.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                           "fake_j2534.dll not found next to canmatik_gui.exe!");
+    } else {
+        ImGui::TextDisabled("DLL: %s", dll_path_cache.c_str());
+    }
+
+    // Install button
+    if (ImGui::Button("Install Proxy Interface") && !dll_path_cache.empty()) {
+        const J2534Preset* p = &kPresets[0];
+        std::string name, vendor;
+        if (use_custom) {
+            name = custom_name;
+            vendor = custom_vendor;
+            // Build a custom preset with all protocols enabled
+            static J2534Preset custom_preset{"?", "?", nullptr, true, true, true, true, true, true, false, false};
+            p = &custom_preset;
+        } else {
+            p = &kPresets[preset_idx];
+            name = p->name;
+            vendor = p->vendor;
+        }
+        install_status = install_proxy_j2534(name, vendor, dll_path_cache, *p);
+        if (install_status.empty())
+            install_status = "Installed OK: " + name;
+    }
+
+    if (!install_status.empty()) {
+        bool ok = install_status.starts_with("Installed");
+        ImGui::TextColored(ok ? ImVec4(0.3f, 1.0f, 0.3f, 1.0f)
+                              : ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                           "%s", install_status.c_str());
+    }
+
+    // --- Installed J2534 Providers ---
+    ImGui::SeparatorText("Installed J2534 Interfaces");
+    ImGui::TextDisabled("View and remove J2534 providers from the registry.\n"
+                        "Removing a provider hides it from external scan tools.");
+
+    static std::vector<J2534RegEntry> reg_entries;
+    static bool reg_loaded = false;
+    static std::string uninstall_status;
+
+    if (!reg_loaded) {
+        reg_entries = enumerate_j2534_providers();
+        reg_loaded = true;
+    }
+    if (ImGui::Button("Refresh")) {
+        reg_entries = enumerate_j2534_providers();
+        uninstall_status.clear();
+    }
+
+    if (!uninstall_status.empty()) {
+        bool ok = uninstall_status.starts_with("Removed");
+        ImGui::TextColored(ok ? ImVec4(0.3f, 1.0f, 0.3f, 1.0f)
+                              : ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                           "%s", uninstall_status.c_str());
+    }
+
+    if (reg_entries.empty()) {
+        ImGui::TextDisabled("No J2534 providers found in registry.");
+    } else {
+        if (ImGui::BeginTable("##J2534RegTable", 4,
+                ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
+                ImGuiTableFlags_Resizable)) {
+            ImGui::TableSetupColumn("Name",   ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Vendor", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+            ImGui::TableSetupColumn("DLL",    ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("##Act",  ImGuiTableColumnFlags_WidthFixed, 70.0f);
+            ImGui::TableHeadersRow();
+
+            int remove_idx = -1;
+            for (int i = 0; i < static_cast<int>(reg_entries.size()); ++i) {
+                auto& e = reg_entries[i];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(e.name.c_str());
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(e.vendor.c_str());
+                ImGui::TableSetColumnIndex(2);
+                ImGui::TextUnformatted(e.dll_path.c_str());
+                ImGui::TableSetColumnIndex(3);
+                ImGui::PushID(i);
+                if (ImGui::SmallButton("Remove"))
+                    remove_idx = i;
+                ImGui::PopID();
+            }
+
+            ImGui::EndTable();
+
+            if (remove_idx >= 0) {
+                auto err = uninstall_j2534_provider(reg_entries[remove_idx].subkey);
+                if (err.empty()) {
+                    uninstall_status = "Removed: " + reg_entries[remove_idx].name;
+                    reg_entries.erase(reg_entries.begin() + remove_idx);
+                } else {
+                    uninstall_status = err;
+                }
+            }
+        }
+    }
 
     // ----- Capture Buffer section -----
     ImGui::SeparatorText("Capture Buffer");

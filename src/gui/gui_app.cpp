@@ -11,6 +11,7 @@
 #include "gui/panels/can_messages_panel.h"
 #include "gui/panels/obd_data_panel.h"
 #include "gui/panels/dtc_panel.h"
+#include "gui/panels/logs_panel.h"
 #include "gui/panels/settings_panel.h"
 #include "gui/panels/status_bar.h"
 #include "gui/panels/watchdog_panel.h"
@@ -19,6 +20,7 @@
 #include "logging/asc_writer.h"
 #include "logging/jsonl_writer.h"
 #include "core/session_status.h"
+#include "core/log_macros.h"
 #include "obd/pid_decoder.h"
 #include "obd/pid_table.h"
 #include "obd/dtc_decoder.h"
@@ -36,7 +38,11 @@ GuiApp::GuiApp()
 
 void GuiApp::init(const std::string& settings_path) {
     settings_path_ = settings_path;
-    settings_.load(settings_path_);
+    auto load_err = settings_.load(settings_path_);
+    if (load_err.empty())
+        GUI_LOG_INFO("Settings loaded from {}", settings_path_);
+    else
+        GUI_LOG_WARNING("Settings: {} (using defaults)", load_err);
     collector_.resize_buffer(settings_.buffer_capacity);
     collector_.set_overwrite(settings_.buffer_overwrite);
     last_tick_us_ = host_timestamp_us();
@@ -54,6 +60,8 @@ void GuiApp::shutdown() {
     obd_.stop_streaming();
     capture_.stop();
     capture_.disconnect();
+    proxy_server_.stop();
+    if (proxy_loader_.is_loaded()) proxy_loader_.unload();
     settings_.save(settings_path_);
 }
 
@@ -97,6 +105,9 @@ void GuiApp::render() {
     state_.buffer_used  = collector_.buffer_count();
     state_.total_frames = collector_.buffer_count();
 
+    // Sync proxy server state with settings
+    sync_proxy_state();
+
     handle_keyboard_shortcuts();
 
     // Menu bar
@@ -133,8 +144,13 @@ void GuiApp::render() {
             render_dtc_tab();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Settings")) {
+        if (ImGui::BeginTabItem("Logs")) {
             state_.selected_tab = 3;
+            render_logs_tab();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Settings")) {
+            state_.selected_tab = 4;
             render_settings_tab();
             ImGui::EndTabItem();
         }
@@ -155,15 +171,42 @@ void GuiApp::render() {
 // -----------------------------------------------------------------------
 void GuiApp::render_shared_toolbar() {
     // Connect / Disconnect button
-    if (!capture_.is_connected()) {
+    // In terminated proxy mode, there is no real adapter — skip connect.
+    bool terminated_active = proxy_server_.is_running() && settings_.proxy_terminated;
+    if (terminated_active) {
+        ImGui::BeginDisabled();
+        ImGui::Button("Connect");
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::TextDisabled("(terminated mode)");
+    } else if (!capture_.is_connected()) {
         if (ImGui::Button("Connect")) {
-            auto err = capture_.connect(settings_.provider, settings_.bitrate,
-                                       settings_.mock_enabled, collector_,
-                                       settings_.bus_protocol);
-            if (err.empty()) {
-                state_.connected = true;
+            // Block if the proxy is using the same (or only) adapter
+            bool proxy_conflict = false;
+            if (proxy_server_.is_running() && !settings_.proxy_terminated) {
+                proxy_conflict = settings_.provider.empty()
+                              || settings_.provider == settings_.proxy_target
+                              || settings_.provider.find(settings_.proxy_target) != std::string::npos
+                              || settings_.proxy_target.find(settings_.provider) != std::string::npos;
+            }
+
+            if (proxy_conflict) {
+                state_.error_message = std::format(
+                    "Cannot connect: the proxy server is already using '{}'.\n"
+                    "Stop the proxy first, or select a different adapter.",
+                    settings_.proxy_target);
+                GUI_LOG_ERROR("Connect blocked: adapter '{}' in use by proxy", settings_.proxy_target);
             } else {
-                state_.error_message = err;
+                auto err = capture_.connect(settings_.provider, settings_.bitrate,
+                                           settings_.mock_enabled, collector_,
+                                           settings_.bus_protocol);
+                if (err.empty()) {
+                    state_.connected = true;
+                    GUI_LOG_INFO("Connected to '{}' at {} bps", settings_.provider, settings_.bitrate);
+                } else {
+                    state_.error_message = err;
+                    GUI_LOG_ERROR("Connect failed: {}", err);
+                }
             }
         }
     } else {
@@ -171,12 +214,30 @@ void GuiApp::render_shared_toolbar() {
             obd_.stop_streaming();
             capture_.stop();
             capture_.disconnect();
+            GUI_LOG_INFO("Disconnected");
             state_.connected = false;
             state_.playback  = PlaybackState::STOPPED;
         }
     }
     ImGui::SameLine();
     ImGui::TextDisabled(capture_.is_connected() ? "Connected" : "Disconnected");
+
+    // Proxy status indicator
+    if (proxy_server_.is_running()) {
+        ImGui::SameLine();
+        if (settings_.proxy_terminated) {
+            if (proxy_server_.has_client())
+                ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "[Proxy: terminated, client connected]");
+            else
+                ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.2f, 1.0f), "[Proxy: terminated, waiting]");
+        } else {
+            if (proxy_server_.has_client())
+                ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "[Proxy: client connected]");
+            else
+                ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.2f, 1.0f), "[Proxy: waiting]");
+        }
+    }
+
     ImGui::SameLine();
 
     // Data source selector + playback toolbar
@@ -257,12 +318,19 @@ void GuiApp::render_can_tab() {
     ImGui::SetWindowFontScale(settings_.font_scale_can);
 
     // Filter controls
-    ImGui::Checkbox("Changed only", &settings_.show_changed_only);
+    static bool raw_stream = false;
+    ImGui::Checkbox("Raw Stream", &raw_stream);
     ImGui::SameLine();
-    int n = static_cast<int>(settings_.change_filter_n);
-    ImGui::SetNextItemWidth(60);
-    if (ImGui::InputInt("Last N", &n))
-        settings_.change_filter_n = static_cast<uint32_t>(std::clamp(n, 1, 100));
+    if (!raw_stream) {
+        ImGui::Checkbox("Changed only", &settings_.show_changed_only);
+        ImGui::SameLine();
+        int n = static_cast<int>(settings_.change_filter_n);
+        ImGui::SetNextItemWidth(60);
+        if (ImGui::InputInt("Last N", &n))
+            settings_.change_filter_n = static_cast<uint32_t>(std::clamp(n, 1, 100));
+    } else {
+        ImGui::TextDisabled("(chronological, no grouping)");
+    }
 
     // OBD display filter
     ImGui::SameLine();
@@ -334,12 +402,17 @@ void GuiApp::render_can_tab() {
     ImGui::Separator();
 
     // Message table
-    auto rows = collector_.snapshot(settings_.show_changed_only,
-                                    settings_.change_filter_n,
-                                    settings_.obd_mode,
-                                    settings_.id_filter_mode,
-                                    settings_.id_filter_list);
-    render_can_messages_panel(rows, state_, collector_, settings_, show_graph_);
+    std::vector<MessageRow> rows;
+    if (raw_stream) {
+        rows = collector_.raw_snapshot(5000);
+    } else {
+        rows = collector_.snapshot(settings_.show_changed_only,
+                                   settings_.change_filter_n,
+                                   settings_.obd_mode,
+                                   settings_.id_filter_mode,
+                                   settings_.id_filter_list);
+    }
+    render_can_messages_panel(rows, state_, collector_, settings_, show_graph_, raw_stream);
 
     // Watchdog panel
     if (show_watchdog_) {
@@ -465,6 +538,13 @@ void GuiApp::render_obd_tab() {
 void GuiApp::render_dtc_tab() {
     bool file_mode = (state_.data_source == DataSource::FILE);
     render_dtc_panel(dtc_state_, capture_, state_, file_mode);
+}
+
+// -----------------------------------------------------------------------
+// Logs tab
+// -----------------------------------------------------------------------
+void GuiApp::render_logs_tab() {
+    render_logs_panel(GuiLogSink::get());
 }
 
 // -----------------------------------------------------------------------
@@ -622,6 +702,87 @@ void GuiApp::save_buffer_dialog() {
     }
     // Reset clock so the next tick doesn't include dialog time.
     last_tick_us_ = host_timestamp_us();
+}
+
+// -----------------------------------------------------------------------
+// Proxy server lifecycle — start/stop based on settings
+// -----------------------------------------------------------------------
+void GuiApp::sync_proxy_state() {
+    bool want = settings_.proxy_enabled;
+
+    // Start the proxy if newly enabled
+    if (want && !proxy_was_enabled_) {
+
+        // --- Terminated mode: no real adapter needed ---
+        if (settings_.proxy_terminated) {
+            auto err = proxy_server_.start_terminated([this](const CanFrame& f) {
+                collector_.pushFrame(f);
+            });
+            if (!err.empty()) {
+                state_.error_message = std::format("Proxy: {}", err);
+                settings_.proxy_enabled = false;
+                return;
+            }
+            proxy_was_enabled_ = true;
+            GUI_LOG_INFO("Proxy server started (terminated mode)");
+            return;
+        }
+
+        // --- Normal proxy mode: forward to real adapter ---
+        // Wait until user selects a target — don't error, just skip
+        if (settings_.proxy_target.empty())
+            return;
+
+        // Find the DLL path for the selected target adapter
+        // Ensure providers have been scanned (may be empty on fresh startup)
+        if (capture_.scanned_devices().empty())
+            capture_.scan_providers(false);
+
+        const auto& devices = capture_.scanned_devices();
+        std::string dll_path;
+        for (auto& d : devices) {
+            if (d.name == settings_.proxy_target) {
+                dll_path = d.dll_path;
+                break;
+            }
+        }
+        if (dll_path.empty()) {
+            state_.error_message = std::format(
+                "Proxy: cannot find DLL for '{}'.\n"
+                "Scan for providers in Settings first.", settings_.proxy_target);
+            settings_.proxy_enabled = false;
+            return;
+        }
+
+        try {
+            proxy_loader_.load(dll_path);
+        } catch (const std::exception& e) {
+            state_.error_message = std::format("Proxy: failed to load DLL: {}", e.what());
+            settings_.proxy_enabled = false;
+            return;
+        }
+
+        auto err = proxy_server_.start(proxy_loader_, [this](const CanFrame& f) {
+            collector_.pushFrame(f);
+        });
+        if (!err.empty()) {
+            state_.error_message = std::format("Proxy: {}", err);
+            proxy_loader_.unload();
+            settings_.proxy_enabled = false;
+            return;
+        }
+
+        proxy_was_enabled_ = true;
+        GUI_LOG_INFO("Proxy server started (target: {})", settings_.proxy_target);
+    }
+
+    // Stop the proxy if newly disabled
+    if (!want && proxy_was_enabled_) {
+        proxy_server_.stop();
+        if (proxy_loader_.is_loaded()) proxy_loader_.unload();
+        proxy_was_enabled_ = false;
+        GUI_LOG_INFO("Proxy server stopped");
+    }
 }
 
 // -----------------------------------------------------------------------

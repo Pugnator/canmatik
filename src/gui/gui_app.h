@@ -10,6 +10,9 @@
 #include "gui/controllers/replay_controller.h"
 #include "gui/controllers/obd_controller.h"
 #include "gui/panels/dtc_panel.h"
+#include "gui/gui_log_sink.h"
+#include "proxy/proxy_server.h"
+#include "platform/win32/j2534_dll_loader.h"
 #include "core/timestamp.h"
 
 #include <cstdint>
@@ -45,12 +48,14 @@ private:
     void render_can_tab();
     void render_obd_tab();
     void render_dtc_tab();
+    void render_logs_tab();
     void render_settings_tab();
     void handle_playback_action(PlaybackAction action);
     void handle_keyboard_shortcuts();
     void open_file_dialog();
     void save_buffer_dialog();
     void show_error_popup();
+    void sync_proxy_state();
 
     GuiSettings       settings_;
     GuiState          state_;
@@ -61,6 +66,11 @@ private:
     ReplayController  replay_;
     ObdController     obd_;
     DtcPanelState     dtc_state_;
+
+    // Proxy mode
+    ProxyServer       proxy_server_;
+    J2534DllLoader    proxy_loader_;     ///< DLL loader for the real adapter (proxy target)
+    bool              proxy_was_enabled_ = false;
 
     uint64_t          last_tick_us_ = 0;
     bool              show_watchdog_ = true;

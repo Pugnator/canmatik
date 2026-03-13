@@ -228,9 +228,32 @@ target_link_libraries(canmatik_obd PUBLIC
 target_compile_features(canmatik_obd PUBLIC cxx_std_20)
 
 # ---------------------------------------------------------------------------
-# CLI executable
+# Proxy library (named-pipe proxy server for fake J2534 DLL)
 # ---------------------------------------------------------------------------
-add_executable(canmatik
+add_library(canmatik_proxy STATIC
+    src/proxy/proxy_server.cpp
+    src/proxy/proxy_registry.cpp
+)
+
+target_include_directories(canmatik_proxy PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(canmatik_proxy PUBLIC
+    canmatik_core
+    canmatik_platform
+    tinylog
+)
+
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Unified executable: CLI + GUI in one binary.
+# WIN32 subsystem so the GUI doesn't flash a console window.
+# When invoked with arguments, it routes to CLI mode and attaches a console.
+# ---------------------------------------------------------------------------
+add_executable(canmatik WIN32
+    src/main.cpp
+    # CLI sources
     src/cli/main.cpp
     src/cli/cli_app.cpp
     src/cli/cmd_scan.cpp
@@ -242,7 +265,25 @@ add_executable(canmatik
     src/cli/cmd_label.cpp
     src/cli/cmd_obd.cpp
     src/cli/cmd_sniff.cpp
-    src/cli/canmatik.rc
+    # GUI sources
+    src/gui/gui_main.cpp
+    src/gui/gui_app.cpp
+    src/gui/gui_settings.cpp
+    src/gui/frame_collector.cpp
+    src/gui/controllers/capture_controller.cpp
+    src/gui/controllers/replay_controller.cpp
+    src/gui/controllers/obd_controller.cpp
+    src/gui/panels/can_messages_panel.cpp
+    src/gui/panels/obd_data_panel.cpp
+    src/gui/panels/dtc_panel.cpp
+    src/gui/panels/logs_panel.cpp
+    src/gui/panels/settings_panel.cpp
+    src/gui/panels/watchdog_panel.cpp
+    src/gui/panels/status_bar.cpp
+    src/gui/panels/menu_bar.cpp
+    src/gui/widgets/playback_toolbar.cpp
+    # Resources (icon)
+    src/gui/canmatik_gui.rc
 )
 
 target_include_directories(canmatik PRIVATE
@@ -256,8 +297,13 @@ target_link_libraries(canmatik PRIVATE
     canmatik_services
     canmatik_logging
     canmatik_obd
-    CLI11::CLI11
+    canmatik_proxy
+    imgui
     tinylog
+    CLI11::CLI11
+    nlohmann_json::nlohmann_json
+    opengl32
+    comdlg32
 )
 
 # ---------------------------------------------------------------------------
@@ -274,50 +320,34 @@ set_target_properties(fake_j2534 PROPERTIES
     OUTPUT_NAME "fake_j2534"
 )
 
-# Resolve __stdcall decorated names to .def undecorated names
+# Strip @N stdcall decoration from exports so DLL matches MSVC-built originals
 if(MINGW)
-    target_link_options(fake_j2534 PRIVATE "-Wl,--enable-stdcall-fixup")
+    target_link_options(fake_j2534 PRIVATE
+        "-Wl,--enable-stdcall-fixup"
+        "-Wl,--kill-at"
+    )
 endif()
 
 # ---------------------------------------------------------------------------
-# GUI executable (ImGui + Win32/OpenGL3)
+# Installer (Inno Setup — optional)
 # ---------------------------------------------------------------------------
-add_executable(canmatik_gui WIN32
-    src/gui/gui_main.cpp
-    src/gui/gui_app.cpp
-    src/gui/canmatik_gui.rc
-    src/gui/gui_settings.cpp
-    src/gui/frame_collector.cpp
-    src/gui/controllers/capture_controller.cpp
-    src/gui/controllers/replay_controller.cpp
-    src/gui/controllers/obd_controller.cpp
-    src/gui/panels/can_messages_panel.cpp
-    src/gui/panels/obd_data_panel.cpp
-    src/gui/panels/dtc_panel.cpp
-    src/gui/panels/settings_panel.cpp
-    src/gui/panels/watchdog_panel.cpp
-    src/gui/panels/status_bar.cpp
-    src/gui/panels/menu_bar.cpp
-    src/gui/widgets/playback_toolbar.cpp
+find_program(ISCC_EXE ISCC
+    PATHS "C:/Program Files (x86)/Inno Setup 6"
+          "C:/Program Files/Inno Setup 6"
+    DOC "Inno Setup compiler (ISCC.exe)"
 )
 
-target_include_directories(canmatik_gui PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-target_link_libraries(canmatik_gui PRIVATE
-    canmatik_core
-    canmatik_platform
-    canmatik_mock
-    canmatik_services
-    canmatik_logging
-    canmatik_obd
-    imgui
-    tinylog
-    nlohmann_json::nlohmann_json
-    opengl32
-    comdlg32
-)
+if(ISCC_EXE)
+    add_custom_target(installer
+        COMMAND "${ISCC_EXE}" "${CMAKE_SOURCE_DIR}/installer/canmatik.iss"
+        DEPENDS canmatik fake_j2534
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/installer"
+        COMMENT "Building installer with Inno Setup..."
+    )
+else()
+    message(STATUS "Inno Setup not found — 'installer' target disabled. "
+                   "Install from https://jrsoftware.org/isinfo.php")
+endif()
 
 # ---------------------------------------------------------------------------
 # Tests

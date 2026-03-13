@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <format>
 
 namespace canmatik {
 
@@ -52,8 +53,8 @@ Result<DecodedPid> ObdSession::query_pid(uint8_t mode, uint8_t pid) {
     if (!resp) return Result<DecodedPid>::error(resp.error());
 
     if (resp->is_negative) {
-        return Result<DecodedPid>::error("ECU rejected request: NRC 0x"
-                               + std::to_string(resp->negative_code));
+        return Result<DecodedPid>::error(std::format(
+            "ECU rejected request: NRC 0x{:02X}", resp->negative_code));
     }
 
     const auto* def = pid_lookup(mode, pid);
@@ -78,8 +79,8 @@ Result<std::vector<DtcCode>> ObdSession::read_dtcs() {
     if (!resp) return Result<std::vector<DtcCode>>::error(resp.error());
 
     if (resp->is_negative) {
-        return Result<std::vector<DtcCode>>::error("ECU rejected DTC read: NRC 0x"
-                               + std::to_string(resp->negative_code));
+        return Result<std::vector<DtcCode>>::error(std::format(
+            "ECU rejected DTC read: NRC 0x{:02X}", resp->negative_code));
     }
 
     // Mode $03 response: data bytes are DTC pairs
@@ -91,8 +92,8 @@ Result<std::vector<DtcCode>> ObdSession::read_pending_dtcs() {
     if (!resp) return Result<std::vector<DtcCode>>::error(resp.error());
 
     if (resp->is_negative) {
-        return Result<std::vector<DtcCode>>::error("ECU rejected pending DTC read: NRC 0x"
-                               + std::to_string(resp->negative_code));
+        return Result<std::vector<DtcCode>>::error(std::format(
+            "ECU rejected pending DTC read: NRC 0x{:02X}", resp->negative_code));
     }
 
     return decode_dtcs(resp->data, resp->data_length, resp->rx_id, true);
@@ -121,13 +122,13 @@ Result<void> ObdSession::clear_dtcs(bool force) {
     if (!resp_frame) return Result<void>::error(resp_frame.error());
 
     if (resp_frame->data[1] == iso15765::kNegativeResponse) {
-        return Result<void>::error("ECU rejected DTC clear: NRC 0x"
-                               + std::to_string(resp_frame->data[3]));
+        return Result<void>::error(std::format(
+            "ECU rejected DTC clear: NRC 0x{:02X}", resp_frame->data[3]));
     }
 
     if (resp_frame->data[1] != 0x44) {
-        return Result<void>::error("unexpected response to Mode $04: 0x"
-                               + std::to_string(resp_frame->data[1]));
+        return Result<void>::error(std::format(
+            "unexpected response to Mode $04: 0x{:02X}", resp_frame->data[1]));
     }
 
     return {};
@@ -253,6 +254,18 @@ ObdSession::read_obd_frame(uint32_t timeout_ms) {
         for (const auto& f : frames) {
             if (iso15765::is_response_id(f.arbitration_id)) {
                 if (frame_sink_) frame_sink_->onFrame(f);
+
+                // NRC 0x78: responsePending — ECU needs more time.
+                // Extend deadline to P2* and keep reading for the real response.
+                uint8_t pci_type = f.data[0] & 0xF0;
+                if (pci_type == iso15765::kPciSingleFrame &&
+                    f.data[1] == iso15765::kNegativeResponse &&
+                    f.data[3] == iso15765::kNrcResponsePending) {
+                    deadline = std::chrono::steady_clock::now()
+                              + std::chrono::milliseconds(iso15765::kP2StarTimeout);
+                    continue;
+                }
+
                 return f;
             }
         }

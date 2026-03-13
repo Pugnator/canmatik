@@ -200,6 +200,35 @@ std::vector<MessageRow> FrameCollector::snapshot(bool changed_only, uint32_t cha
     return out;
 }
 
+std::vector<MessageRow> FrameCollector::raw_snapshot(uint32_t max_rows) const {
+    std::lock_guard lock(mu_);
+    std::vector<MessageRow> out;
+    if (ring_count_ == 0) return out;
+
+    // Read the most recent max_rows frames from the ring buffer
+    size_t count = std::min(static_cast<size_t>(max_rows), ring_count_);
+    size_t start_offset = ring_count_ - count;
+    size_t ring_start = (ring_count_ < ring_.size()) ? 0 : ring_head_;
+    out.reserve(count);
+
+    for (size_t i = 0; i < count; ++i) {
+        size_t idx = (ring_start + start_offset + i) % ring_.size();
+        const auto& f = ring_[idx];
+        MessageRow r;
+        r.arb_id  = f.arbitration_id;
+        r.dlc     = f.dlc;
+        for (uint8_t b = 0; b < 8 && b < f.dlc; ++b)
+            r.data[b] = f.data[b];
+        r.last_seen    = session_relative_seconds(f.host_timestamp_us, session_start_us_);
+        r.update_count = start_offset + i + 1; // sequential frame number
+        r.is_new       = false;
+        r.dlc_changed  = false;
+        r.is_watched   = watchdog_ids_.count(f.arbitration_id) > 0;
+        out.push_back(r);
+    }
+    return out;
+}
+
 std::vector<MessageRow> FrameCollector::watchdog_snapshot() const {
     std::lock_guard lock(mu_);
     std::vector<MessageRow> out;

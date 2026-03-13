@@ -41,6 +41,9 @@ constexpr uint8_t kPositiveResponseOffset = 0x40;
 // Negative response service ID
 constexpr uint8_t kNegativeResponse = 0x7F;
 
+// Common Negative Response Codes
+constexpr uint8_t kNrcResponsePending = 0x78;  // requestCorrectlyReceivedResponsePending
+
 /// Check if a CAN ID is a valid OBD-II response ID (0x7E8–0x7EF).
 [[nodiscard]] constexpr bool is_response_id(uint32_t id) {
     return id >= kResponseBase && id <= kResponseEnd;

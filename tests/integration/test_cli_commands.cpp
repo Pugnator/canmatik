@@ -138,7 +138,8 @@ TEST_CASE("CLI: --version prints version", "[integration][cli]") {
     CHECK_THAT(r.output, ContainsSubstring("0.1.0"));
 }
 
-TEST_CASE("CLI: no subcommand prints error", "[integration][cli]") {
-    auto r = run_cmd(exe_path());
-    CHECK(r.exit_code != 0);
+TEST_CASE("CLI: --help prints usage", "[integration][cli]") {
+    auto r = run_cmd(exe_path() + " --help");
+    CHECK(r.exit_code == 0);
+    CHECK_THAT(r.output, ContainsSubstring("Usage:"));
 }
