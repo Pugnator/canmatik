@@ -65,7 +65,7 @@ the captured traffic in the GUI.
 ## Prerequisites
 
 - Windows 10 or later (64-bit OS, 32-bit application)
-- A USB J2534-compatible adapter (e.g., Tactrix OpenPort 2.0) with its
+- A USB J2534-compatible adapter (e.g., Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM) with its
   driver/provider installed
 
 ### Building from Source

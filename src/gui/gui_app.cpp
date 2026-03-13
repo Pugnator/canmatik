@@ -198,7 +198,7 @@ void GuiApp::render_shared_toolbar() {
                 GUI_LOG_ERROR("Connect blocked: adapter '{}' in use by proxy", settings_.proxy_target);
             } else {
                 auto err = capture_.connect(settings_.provider, settings_.bitrate,
-                                           settings_.mock_enabled, collector_,
+                                           false, collector_,
                                            settings_.bus_protocol);
                 if (err.empty()) {
                     state_.connected = true;
@@ -483,9 +483,47 @@ static std::vector<ObdPidRow> decode_obd_from_buffer(const std::vector<CanFrame>
 // OBD Data tab
 // -----------------------------------------------------------------------
 void GuiApp::render_obd_tab() {
-    ImGui::SetWindowFontScale(settings_.font_scale_obd);
+    // OBD PID selection and interval (moved from Settings)
+    ImGui::SeparatorText("OBD Settings");
+    ImGui::Text("PIDs to query (hex):");
+    // List current PIDs with remove buttons
+    for (size_t i = 0; i < settings_.obd_pids.size(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        char label[16];
+        std::snprintf(label, sizeof(label), "0x%02X", settings_.obd_pids[i]);
+        ImGui::Text("%s", label);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Remove")) {
+            settings_.obd_pids.erase(settings_.obd_pids.begin() + i);
+            ImGui::PopID();
+            break;
+        }
+        ImGui::PopID();
+    }
 
-    // Live OBD start / stop controls
+    // Add PID entry (hex in format 0x####)
+    static char pid_buf[7] = "0x000C"; // fixed 6 chars + null
+    ImGui::SetNextItemWidth(140);
+    ImGui::InputText("Add PID (hex 0x####)", pid_buf, sizeof(pid_buf));
+    ImGui::SameLine();
+    if (ImGui::Button("Add PID")) {
+        // Validate format: 0x followed by 4 hex digits
+        bool ok = true;
+        if (std::strlen(pid_buf) != 6 || !(pid_buf[0] == '0' && (pid_buf[1] == 'x' || pid_buf[1] == 'X')))
+            ok = false;
+        for (int i = 2; i < 6 && ok; ++i) if (!isxdigit(static_cast<unsigned char>(pid_buf[i]))) ok = false;
+        if (ok) {
+            try {
+                unsigned v = std::stoul(std::string(pid_buf + 2), nullptr, 16);
+                if (v <= 0xFF) settings_.obd_pids.push_back(static_cast<uint8_t>(v));
+            } catch(...) {}
+        }
+    }
+
+    ImGui::Separator();
+
+    // Set window font to OBD font scale for the OBD data display below
+    ImGui::SetWindowFontScale(settings_.font_scale_obd);
     if (state_.data_source == DataSource::LIVE) {
         if (!capture_.is_connected()) {
             ImGui::TextDisabled("Not connected.");

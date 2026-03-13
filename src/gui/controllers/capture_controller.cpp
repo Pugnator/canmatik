@@ -51,9 +51,12 @@ std::string CaptureController::connect(const std::string& provider_name,
 std::string CaptureController::start(FrameCollector& collector) {
     if (!session_.isChannelOpen()) return "Channel not open.";
     FilterEngine filter; // pass-all
-    capture_.setFilter(filter);
-    capture_.addSink(&collector);
-    capture_.start(session_.channel(), session_.mutableStatus());
+    // Register the GUI collector with the global capture service and start it.
+    collector_ = &collector;
+    // Ensure the global capture uses the same filter
+    SetGlobalFilter(filter);
+    AddGlobalSink(&collector);
+    StartGlobalCapture(session_.channel(), session_.mutableStatus());
     paused_ = false;
     return {};
 }
@@ -62,7 +65,12 @@ void CaptureController::pause() { paused_ = true; }
 void CaptureController::resume() { paused_ = false; }
 
 void CaptureController::stop() {
-    if (capture_.isRunning()) capture_.stop();
+    if (collector_) {
+        RemoveGlobalSink(collector_);
+        collector_ = nullptr;
+    }
+    // GUI controls lifecycle; stop the global capture when GUI stops.
+    StopGlobalCapture();
 }
 
 void CaptureController::disconnect() {
@@ -76,12 +84,12 @@ bool CaptureController::is_connected() const {
 }
 
 bool CaptureController::is_capturing() const {
-    return capture_.isRunning();
+    return IsGlobalCaptureRunning();
 }
 
 void CaptureController::drain() {
-    if (!paused_ && capture_.isRunning())
-        capture_.drain();
+    if (!paused_ && IsGlobalCaptureRunning())
+        DrainGlobalCapture();
 }
 
 const SessionStatus& CaptureController::status() const {

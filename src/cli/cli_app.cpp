@@ -26,6 +26,7 @@ void register_demo_command(CLI::App& app, const GlobalOptions& globals, const Co
 void register_label_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 void register_obd_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 void register_sniff_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
+void register_elm327_command(CLI::App& app, const GlobalOptions& globals, const Config& config);
 
 // Dispatch functions (implemented in cmd_*.cpp)
 int dispatch_scan(CLI::App& sub, const GlobalOptions& globals, const Config& config);
@@ -37,6 +38,7 @@ int dispatch_demo(CLI::App& sub, const GlobalOptions& globals, const Config& con
 int dispatch_label(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 int dispatch_obd(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 int dispatch_sniff(CLI::App& sub, const GlobalOptions& globals, const Config& config);
+int dispatch_elm327(CLI::App& sub, const GlobalOptions& globals, const Config& config);
 
 // ---------------------------------------------------------------------------
 // build_cli
@@ -119,6 +121,10 @@ std::unique_ptr<CLI::App> build_cli(GlobalOptions& globals) {
     auto* sniff = app->add_subcommand("sniff", "Show only changed CAN frames with diff highlighting");
     sniff->add_option("--bitrate", "CAN bitrate in bps")->default_val("500000");
     sniff->add_option("--filter", "Filter specification (repeatable)")->expected(-1);
+
+    auto* elm = app->add_subcommand("elm327", "Run ELM327 serial-to-J2534 bridge");
+    elm->add_option("--serial", "Serial port (e.g. COM6)")->required();
+    elm->add_option("--provider", "J2534 provider name (optional)");
 
     return app;
 }
@@ -210,6 +216,7 @@ int dispatch(CLI::App& app, const GlobalOptions& globals, const Config& config) 
             if (name == "label")   return dispatch_label(*sub, globals, config);
             if (name == "obd")     return dispatch_obd(*sub, globals, config);
             if (name == "sniff")   return dispatch_sniff(*sub, globals, config);
+            if (name == "elm327")   return dispatch_elm327(*sub, globals, config);
         }
     }
 

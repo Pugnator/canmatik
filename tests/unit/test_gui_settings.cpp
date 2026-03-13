@@ -24,7 +24,6 @@ TEST_CASE("GuiSettings defaults are valid", "[gui_settings]") {
     CHECK(s.buffer_capacity == 100000);
     CHECK(s.change_filter_n == 1);
     CHECK_FALSE(s.show_changed_only);
-    CHECK_FALSE(s.mock_enabled);
     CHECK(s.obd_interval_ms == 500);
     CHECK(s.obd_pids.size() == 3);
     CHECK(s.window_width == 1024);
@@ -37,7 +36,6 @@ TEST_CASE("GuiSettings save/load roundtrip", "[gui_settings]") {
     GuiSettings orig;
     orig.provider = "TestProvider";
     orig.bitrate  = 250000;
-    orig.mock_enabled = true;
     orig.buffer_capacity = 5000;
     orig.change_filter_n = 5;
     orig.show_changed_only = true;
@@ -57,7 +55,6 @@ TEST_CASE("GuiSettings save/load roundtrip", "[gui_settings]") {
 
     CHECK(loaded.provider == "TestProvider");
     CHECK(loaded.bitrate == 250000);
-    CHECK(loaded.mock_enabled == true);
     CHECK(loaded.buffer_capacity == 5000);
     CHECK(loaded.change_filter_n == 5);
     CHECK(loaded.show_changed_only == true);

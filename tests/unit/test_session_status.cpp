@@ -71,14 +71,14 @@ TEST_CASE("SessionStatus counter increments", "[session_status]") {
 // ---------------------------------------------------------------------------
 TEST_CASE("SessionStatus state fields", "[session_status]") {
     SessionStatus s;
-    s.provider_name = "Tactrix OpenPort 2.0";
-    s.adapter_name  = "Tactrix OpenPort 2.0";
+    s.provider_name = "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM";
+    s.adapter_name  = "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM";
     s.bitrate       = 500000;
     s.channel_open  = true;
     s.recording     = true;
     s.recording_file = "captures/test.asc";
 
-    CHECK(s.provider_name == "Tactrix OpenPort 2.0");
+    CHECK(s.provider_name == "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM");
     CHECK(s.bitrate == 500000);
     CHECK(s.channel_open);
     CHECK(s.recording);

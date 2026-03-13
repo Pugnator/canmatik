@@ -14,7 +14,7 @@ static constexpr const char* kDeviceClassesRoot =
     "System\\CurrentControlSet\\Control\\DeviceClasses\\"
     "{6d1781b7-c987-4f6c-8d4f-1efc098bea67}";
 
-// Build a sanitised device ID from a display name  (e.g. "Openport 2.0" → "OPENPORT_2_0")
+// Build a sanitised device ID from a display name  (e.g. "OpenPort 2.0 J2534 ISO/CAN/VPW/PWM" → "OPENPORT_2_0_J2534_ISO_CAN_VPW_PWM")
 static std::string sanitize_device_id(const std::string& name) {
     std::string out;
     out.reserve(name.size());

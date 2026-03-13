@@ -32,8 +32,8 @@ struct J2534Preset {
 /// Built-in presets for well-known interfaces.
 inline const J2534Preset kPresets[] = {
     {"CANmatik Proxy",    "CANmatik",           nullptr,         true, true, false, false, false, false, false, false},
-    {"Openport 2.0",      "Tactrix",            "op20pt32.dll",  true, true, true,  true,  true,  true,  true,  true },
-    {"Scanmatic 2 Pro",   "Interface Solutions", nullptr,         true, true, true,  true,  true,  true,  false, false},
+    {"OpenPort 2.0 J2534 ISO/CAN/VPW/PWM", "Tactrix",            "op20pt32.dll",  true, true, true,  true,  true,  true,  true,  true },
+    {"SM2 USB",           "Scanmatik",          "smj2534.dll",   true, true, true,  true,  true,  true,  false, false},
     {"MongoosePro GM II", "Drew Technologies",  nullptr,         true, true, true,  true,  true,  true,  false, false},
     {"VCM II",            "Ford / Bosch",       nullptr,         true, true, true,  true,  true,  true,  false, false},
 };

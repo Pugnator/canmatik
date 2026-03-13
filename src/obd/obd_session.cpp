@@ -75,28 +75,79 @@ Result<DecodedPid> ObdSession::query_pid(uint8_t mode, uint8_t pid) {
 }
 
 Result<std::vector<DtcCode>> ObdSession::read_dtcs() {
+    // First try: functional/standard behavior
     auto resp = send_and_receive(0x03, 0x00);
-    if (!resp) return Result<std::vector<DtcCode>>::error(resp.error());
-
-    if (resp->is_negative) {
-        return Result<std::vector<DtcCode>>::error(std::format(
-            "ECU rejected DTC read: NRC 0x{:02X}", resp->negative_code));
+    if (resp && !resp->is_negative) {
+        auto decoded = decode_dtcs(resp->data, resp->data_length, resp->rx_id, false);
+        if (decoded && !decoded->empty()) return decoded;
+        // If empty result, fall through to conservative fallback
     }
 
-    // Mode $03 response: data bytes are DTC pairs
-    return decode_dtcs(resp->data, resp->data_length, resp->rx_id, false);
+    // Conservative fallback: try physical addressing (0x7E0) with repeated requests
+    std::vector<uint8_t> agg;
+    uint32_t found_ecu = 0;
+    auto save_tx = tx_id_;
+    auto save_rx = rx_base_;
+    tx_id_ = iso15765::kPhysicalTxBase; // 0x7E0
+    rx_base_ = 0x760; // Forscan-observed response base
+
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        // Try pending DTCs (Mode 07)
+        auto p = send_and_receive(0x07, 0x00);
+        if (p && !p->is_negative && p->data_length > 0) {
+            found_ecu = p->rx_id;
+            for (uint8_t i = 0; i < p->data_length; ++i) agg.push_back(p->data[i]);
+        }
+
+        // Try stored DTCs (Mode 03)
+        auto s = send_and_receive(0x03, 0x00);
+        if (s && !s->is_negative && s->data_length > 0) {
+            found_ecu = s->rx_id;
+            for (uint8_t i = 0; i < s->data_length; ++i) agg.push_back(s->data[i]);
+        }
+    }
+
+    // Restore
+    tx_id_ = save_tx;
+    rx_base_ = save_rx;
+
+    if (agg.empty())
+        return Result<std::vector<DtcCode>>::error("No DTCs found (functional and physical attempts failed)");
+
+    return decode_dtcs(agg.data(), agg.size(), found_ecu, false);
 }
 
 Result<std::vector<DtcCode>> ObdSession::read_pending_dtcs() {
+    // Try standard single-attempt first
     auto resp = send_and_receive(0x07, 0x00);
-    if (!resp) return Result<std::vector<DtcCode>>::error(resp.error());
-
-    if (resp->is_negative) {
-        return Result<std::vector<DtcCode>>::error(std::format(
-            "ECU rejected pending DTC read: NRC 0x{:02X}", resp->negative_code));
+    if (resp && !resp->is_negative) {
+        auto decoded = decode_dtcs(resp->data, resp->data_length, resp->rx_id, true);
+        if (decoded && !decoded->empty()) return decoded;
     }
 
-    return decode_dtcs(resp->data, resp->data_length, resp->rx_id, true);
+    // Fallback: physical addressing with repeats
+    std::vector<uint8_t> agg;
+    uint32_t found_ecu = 0;
+    auto save_tx = tx_id_;
+    auto save_rx = rx_base_;
+    tx_id_ = iso15765::kPhysicalTxBase;
+    rx_base_ = 0x760;
+
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        auto p = send_and_receive(0x07, 0x00);
+        if (p && !p->is_negative && p->data_length > 0) {
+            found_ecu = p->rx_id;
+            for (uint8_t i = 0; i < p->data_length; ++i) agg.push_back(p->data[i]);
+        }
+    }
+
+    tx_id_ = save_tx;
+    rx_base_ = save_rx;
+
+    if (agg.empty())
+        return Result<std::vector<DtcCode>>::error("No pending DTCs found (functional and physical attempts failed)");
+
+    return decode_dtcs(agg.data(), agg.size(), found_ecu, true);
 }
 
 Result<void> ObdSession::clear_dtcs(bool force) {
@@ -105,33 +156,59 @@ Result<void> ObdSession::clear_dtcs(bool force) {
     }
 
     // Mode $04 has no PID — send 1 payload byte
-    CanFrame frame{};
-    frame.arbitration_id = tx_id_;
-    frame.type = FrameType::Standard;
-    frame.dlc = iso15765::kStandardDlc;
-    frame.data.fill(iso15765::kPaddingByte);
-    frame.data[0] = 0x01; // Single frame, 1 payload byte
-    frame.data[1] = 0x04; // Mode $04
+    auto do_clear = [&]() -> Result<void> {
+        CanFrame frame{};
+        frame.arbitration_id = tx_id_;
+        frame.type = FrameType::Standard;
+        frame.dlc = iso15765::kStandardDlc;
+        frame.data.fill(iso15765::kPaddingByte);
+        frame.data[0] = 0x01; // Single frame, 1 payload byte
+        frame.data[1] = 0x04; // Mode $04
 
-    frame.host_timestamp_us = host_timestamp_us();
-    if (frame_sink_) frame_sink_->onFrame(frame);
-    channel_.write(frame);
+        frame.host_timestamp_us = host_timestamp_us();
+        if (frame_sink_) frame_sink_->onFrame(frame);
+        channel_.write(frame);
 
-    // Wait for positive response (0x44)
-    auto resp_frame = read_obd_frame(iso15765::kP2CanTimeout);
-    if (!resp_frame) return Result<void>::error(resp_frame.error());
+        // Wait for positive response (0x44)
+        auto resp_frame = read_obd_frame(iso15765::kP2CanTimeout);
+        if (!resp_frame) return Result<void>::error(resp_frame.error());
 
-    if (resp_frame->data[1] == iso15765::kNegativeResponse) {
-        return Result<void>::error(std::format(
-            "ECU rejected DTC clear: NRC 0x{:02X}", resp_frame->data[3]));
+        if (resp_frame->data[1] == iso15765::kNegativeResponse) {
+            return Result<void>::error(std::format(
+                "ECU rejected DTC clear: NRC 0x{:02X}", resp_frame->data[3]));
+        }
+
+        if (resp_frame->data[1] != 0x44) {
+            return Result<void>::error(std::format(
+                "unexpected response to Mode $04: 0x{:02X}", resp_frame->data[1]));
+        }
+
+        return {};
+    };
+
+    // First, try standard behavior
+    auto res = do_clear();
+    if (res) return res;
+
+    // Fallback: try physical addressing with a few retries
+    auto save_tx = tx_id_;
+    auto save_rx = rx_base_;
+    tx_id_ = iso15765::kPhysicalTxBase;
+    rx_base_ = 0x760;
+
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        auto r = do_clear();
+        if (r) {
+            tx_id_ = save_tx;
+            rx_base_ = save_rx;
+            return r;
+        }
     }
 
-    if (resp_frame->data[1] != 0x44) {
-        return Result<void>::error(std::format(
-            "unexpected response to Mode $04: 0x{:02X}", resp_frame->data[1]));
-    }
+    tx_id_ = save_tx;
+    rx_base_ = save_rx;
 
-    return {};
+    return Result<void>::error("DTC clear failed after functional and physical attempts");
 }
 
 Result<VehicleInfo> ObdSession::read_vehicle_info() {
@@ -185,7 +262,7 @@ ObdSession::send_and_receive(uint8_t mode, uint8_t pid) {
     auto frame = read_obd_frame(iso15765::kP2CanTimeout);
     if (!frame) return Result<ObdResponse>::error(frame.error());
 
-    return parse_obd_response(*frame, mode, pid);
+    return parse_obd_response(*frame, mode, pid, rx_base_);
 }
 
 Result<std::vector<uint8_t>>
@@ -252,7 +329,7 @@ ObdSession::read_obd_frame(uint32_t timeout_ms) {
 
         auto frames = channel_.read(static_cast<uint32_t>(remaining));
         for (const auto& f : frames) {
-            if (iso15765::is_response_id(f.arbitration_id)) {
+            if (f.arbitration_id >= rx_base_ && f.arbitration_id < rx_base_ + 8) {
                 if (frame_sink_) frame_sink_->onFrame(f);
 
                 // NRC 0x78: responsePending — ECU needs more time.

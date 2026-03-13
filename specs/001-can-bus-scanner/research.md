@@ -79,7 +79,7 @@ Each provider subkey contains at minimum:
 
 | Value Name | Type | Description |
 |---|---|---|
-| `Name` | `REG_SZ` | Human-readable provider name (e.g., "Tactrix OpenPort 2.0") |
+| `Name` | `REG_SZ` | Human-readable provider name (e.g., "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM") |
 | `FunctionLibrary` | `REG_SZ` | Full path to the J2534 DLL (e.g., `C:\Program Files (x86)\OpenPort\op20pt32.dll`) |
 | `Vendor` | `REG_SZ` | Vendor name |
 | `CAN` | `REG_DWORD` | `1` if CAN protocol supported |
@@ -483,7 +483,7 @@ End TriggerBlock
 
 JSONL format example:
 ```json
-{"_type":"header","tool":"canmatik","version":"0.1.0","adapter":"Tactrix OpenPort 2.0","bitrate":500000,"start_time":"2026-03-08T14:30:00.000Z","start_time_unix_us":1772925000000000}
+{"_type":"header","tool":"canmatik","version":"0.1.0","adapter":"Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM","bitrate":500000,"start_time":"2026-03-08T14:30:00.000Z","start_time_unix_us":1772925000000000}
 {"ts":0.000000,"ats":123456,"id":"7E8","ext":false,"type":"rx","dlc":8,"data":"0241 0C1A F800 0000"}
 {"ts":0.001234,"ats":124690,"id":"7E0","ext":false,"type":"rx","dlc":8,"data":"0201 0C00 0000 0000"}
 ```
@@ -496,7 +496,7 @@ The header (first lines of ASC comment block, or first JSON object in JSONL) sho
 |---|---|---|
 | `tool` | Application name and version | `canmatik 0.1.0` |
 | `format_version` | Log format version (for future compatibility) | `1.0` |
-| `adapter_name` | J2534 provider/adapter name | `Tactrix OpenPort 2.0` |
+| `adapter_name` | J2534 provider/adapter name | `Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM` |
 | `adapter_vendor` | Vendor name | `Tactrix` |
 | `protocol` | Protocol identifier | `CAN` |
 | `bitrate` | Configured bitrate | `500000` |

@@ -10,10 +10,12 @@
 namespace canmatik {
 
 Result<ObdResponse>
-parse_obd_response(const CanFrame& frame, uint8_t expected_mode, uint8_t expected_pid) {
-    if (!iso15765::is_response_id(frame.arbitration_id)) {
+parse_obd_response(const CanFrame& frame, uint8_t expected_mode, uint8_t expected_pid,
+                   uint32_t resp_base) {
+    if (!(frame.arbitration_id >= resp_base && frame.arbitration_id < resp_base + 8)) {
         return Result<ObdResponse>::error(std::format(
-            "CAN ID 0x{:03X} is not a valid OBD response ID", frame.arbitration_id));
+            "CAN ID 0x{:03X} is not a valid OBD response ID for base 0x{:03X}",
+            frame.arbitration_id, resp_base));
     }
 
     // Check for single frame PCI
@@ -74,9 +76,11 @@ parse_obd_response(const CanFrame& frame, uint8_t expected_mode, uint8_t expecte
 }
 
 Result<ObdResponse>
-parse_obd_response(const CanFrame& frame) {
-    if (!iso15765::is_response_id(frame.arbitration_id)) {
-        return Result<ObdResponse>::error("CAN ID is not a valid OBD response ID");
+parse_obd_response(const CanFrame& frame, uint32_t resp_base) {
+    if (!(frame.arbitration_id >= resp_base && frame.arbitration_id < resp_base + 8)) {
+        return Result<ObdResponse>::error(std::format(
+            "CAN ID 0x{:03X} is not a valid OBD response ID for base 0x{:03X}",
+            frame.arbitration_id, resp_base));
     }
 
     uint8_t pci = frame.data[0];

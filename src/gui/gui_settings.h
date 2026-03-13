@@ -16,7 +16,7 @@ struct GuiSettings {
     // Connection
     std::string provider;
     uint32_t    bitrate         = 500000;
-    bool        mock_enabled    = false;
+    // Mock backend removed from GUI settings; use CLI flag to enable mock.
     BusProtocol bus_protocol    = BusProtocol::CAN;
 
     // Proxy mode: expose fake J2534 DLL, forward to real adapter
@@ -67,6 +67,9 @@ struct GuiSettings {
     int         window_width    = 1024;
     int         window_height   = 720;
     std::string last_file_path;
+
+    // ELM327 bridge serial settings
+    uint32_t    elm327_baud = 38400;  ///< default baud for ELM327 bridge
 
     /// Load settings from a JSON file. Returns empty string on success,
     /// error description on failure (file keeps defaults).

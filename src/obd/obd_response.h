@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/can_frame.h"
+#include "obd/iso15765.h"
 #include "core/result.h"
 
 namespace canmatik {
@@ -28,11 +29,12 @@ struct ObdResponse {
 /// Parse a single-frame OBD response from a CAN frame.
 /// Validates that the frame is a valid OBD response for the given request mode/pid.
 [[nodiscard]] Result<ObdResponse>
-parse_obd_response(const CanFrame& frame, uint8_t expected_mode, uint8_t expected_pid);
+parse_obd_response(const CanFrame& frame, uint8_t expected_mode, uint8_t expected_pid,
+                   uint32_t resp_base = iso15765::kResponseBase);
 
 /// Parse a single-frame OBD response without request validation (for broadcast).
 [[nodiscard]] Result<ObdResponse>
-parse_obd_response(const CanFrame& frame);
+parse_obd_response(const CanFrame& frame, uint32_t resp_base = iso15765::kResponseBase);
 
 /// Assemble a multi-frame (ISO-TP) response from a sequence of CAN frames.
 /// The first frame in the vector must be the First Frame; subsequent are Consecutive Frames.

@@ -88,7 +88,7 @@ Describes a discovered J2534 provider/adapter (USB-connected only). Read-only af
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
-| `name` | `string` | Non-empty | Human-readable provider name (e.g., "Tactrix OpenPort 2.0") |
+| `name` | `string` | Non-empty | Human-readable provider name (e.g., "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM") |
 | `vendor` | `string` | Non-empty | Vendor name |
 | `dll_path` | `string` | Valid filesystem path | Full path to J2534 DLL on host |
 | `supports_can` | `bool` | | Provider advertises CAN protocol support |

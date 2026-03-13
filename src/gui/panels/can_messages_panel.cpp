@@ -30,6 +30,10 @@ void render_can_messages_panel(const std::vector<MessageRow>& rows,
     static bool auto_scroll = true;
     ImGui::Checkbox("Auto-scroll", &auto_scroll);
     ImGui::SameLine();
+    if (ImGui::Button("Clear Buffer")) {
+        collector.clear();
+    }
+    ImGui::SameLine();
     ImGui::TextColored(kColorNew, "New");
     ImGui::SameLine();
     ImGui::TextColored(kColorChanged, "Changed");

@@ -39,6 +39,12 @@ project(canmatik
     DESCRIPTION "Open-source CAN bus scanner, recorder and anlyzer for J2534 Pass-Thru interfaces"
 )
 
+# Default to Release when no build type is provided for single-config generators
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type." FORCE)
+    message(STATUS "No build type specified — defaulting to Release.")
+endif()
+
 # ---------------------------------------------------------------------------
 # Global compiler settings
 # ---------------------------------------------------------------------------
@@ -140,6 +146,8 @@ add_library(canmatik_platform STATIC
     src/platform/win32/registry_scanner.cpp
     src/platform/win32/j2534_provider.cpp
     src/platform/win32/j2534_channel.cpp
+    src/platform/win32/serial_provider.cpp
+    src/platform/win32/serial_channel.cpp
 )
 
 target_include_directories(canmatik_platform PUBLIC
@@ -174,6 +182,8 @@ add_library(canmatik_services STATIC
     src/services/capture_service.cpp
     src/services/record_service.cpp
     src/services/replay_service.cpp
+    src/services/elm327_bridge.cpp
+    src/services/global_capture.cpp
 )
 
 target_include_directories(canmatik_services PUBLIC
@@ -265,6 +275,7 @@ add_executable(canmatik WIN32
     src/cli/cmd_label.cpp
     src/cli/cmd_obd.cpp
     src/cli/cmd_sniff.cpp
+    src/cli/cmd_elm327.cpp
     # GUI sources
     src/gui/gui_main.cpp
     src/gui/gui_app.cpp

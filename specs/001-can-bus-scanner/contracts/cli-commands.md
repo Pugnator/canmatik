@@ -40,13 +40,13 @@ canmatik scan [--json] [--verbose]
 **Output (text)**:
 ```
 J2534 Providers:
-  1. Tactrix OpenPort 2.0    (Tactrix)     CAN ISO15765
+   1. Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM    (Tactrix)     CAN ISO15765
   2. Drew Technologies       (Drew Tech)   CAN ISO15765 ISO9141
 ```
 
 **Output (JSON)**:
 ```json
-{"providers":[{"name":"Tactrix OpenPort 2.0","vendor":"Tactrix","dll_path":"C:\\...\\op20pt32.dll","supports_can":true,"supports_iso15765":true}]}
+{"providers":[{"name":"Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM","vendor":"Tactrix","dll_path":"C:\\...\\op20pt32.dll","supports_can":true,"supports_iso15765":true}]}
 ```
 
 **Exit codes**:
@@ -78,7 +78,7 @@ canmatik monitor --provider <name> [--bitrate <bps>] [--filter <spec>]...
 
 **Output (text)** — one frame per line, continuous:
 ```
-[PASSIVE] Connected to Tactrix OpenPort 2.0 @ 500 kbps
+[PASSIVE] Connected to Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM @ 500 kbps
    +0.000000  7E8  Std  [8]  02 41 0C 1A F8 00 00 00
    +0.001234  7E0  Std  [8]  02 01 0C 00 00 00 00 00
    +0.002500  3B0  Std  [4]  A1 B2 C3 D4
@@ -124,7 +124,7 @@ canmatik record --provider <name> --output <path>
 
 **Output (text)**: Same as `monitor`, plus:
 ```
-[PASSIVE] [REC captures/session.asc] Connected to Tactrix OpenPort 2.0 @ 500 kbps
+[PASSIVE] [REC captures/session.asc] Connected to Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM @ 500 kbps
 ...
 ^C
 Recording saved: captures/session.asc (1523 frames)
@@ -156,7 +156,7 @@ canmatik replay <file> [--filter <spec>]... [--summary] [--search <id>]
 **Output (text — full)**:
 ```
 Log: captures/session.asc
-Adapter: Tactrix OpenPort 2.0 | Bitrate: 500 kbps | Duration: 12.4 s
+Adapter: Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM | Bitrate: 500 kbps | Duration: 12.4 s
 Frames: 1523 | Unique IDs: 47
 
    +0.000000  7E8  Std  [8]  02 41 0C 1A F8 00 00 00
@@ -167,7 +167,7 @@ Frames: 1523 | Unique IDs: 47
 **Output (text — summary only)**:
 ```
 Log: captures/session.asc
-Adapter: Tactrix OpenPort 2.0 | Bitrate: 500 kbps | Duration: 12.4 s
+Adapter: Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM | Bitrate: 500 kbps | Duration: 12.4 s
 Frames: 1523 | Unique IDs: 47 | Errors: 0
 
 ID Distribution:

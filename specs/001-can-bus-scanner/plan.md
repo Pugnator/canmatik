@@ -293,7 +293,7 @@ with separate entry points but shared services. Tests mirror the `src/` layout.
 ```cpp
 // Abstract provider — implemented by J2534Provider (Windows) or MockProvider
 struct DeviceInfo {
-    std::string name;           // "Tactrix OpenPort 2.0"
+    std::string name;           // "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM"
     std::string vendor;         // "Tactrix"
     std::string dll_path;       // "C:\...\op20pt32.dll"
     bool supports_can;

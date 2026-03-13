@@ -6,11 +6,15 @@
 #include "obd/obd_session.h"
 #include "obd/pid_table.h"
 #include "imgui.h"
+#include "services/elm327_bridge.h"
+#include "platform/win32/serial_provider.h"
 
 #include <algorithm>
 #include <format>
 #include <string>
 #include <vector>
+#include <thread>
+#include <regex>
 
 namespace canmatik {
 
@@ -21,8 +25,8 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
                            bool& scheme_changed) {
     scheme_changed = false;
 
-    // ----- Appearance section -----
-    ImGui::SeparatorText("Appearance");
+    // ----- Appearance (Font sizes & Colors) -----
+    ImGui::SeparatorText("Appearance (Fonts & Colors)");
     static const char* scheme_labels[] = {"Dark", "Light", "Retro (Classic)"};
     int cs_idx = static_cast<int>(settings.color_scheme);
     ImGui::SetNextItemWidth(160);
@@ -31,83 +35,190 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
         scheme_changed = true;
     }
 
-    // ----- Font Sizes section -----
-    ImGui::SeparatorText("Font Sizes");
-    ImGui::SetNextItemWidth(120);
-    if (ImGui::SliderFloat("Bus Messages##fontscale_can", &settings.font_scale_can, 0.5f, 3.0f, "%.1fx"))
-        settings.font_scale_can = std::clamp(settings.font_scale_can, 0.5f, 3.0f);
-    ImGui::SetNextItemWidth(120);
-    if (ImGui::SliderFloat("OBD Data##fontscale_obd", &settings.font_scale_obd, 0.5f, 3.0f, "%.1fx"))
-        settings.font_scale_obd = std::clamp(settings.font_scale_obd, 0.5f, 3.0f);
-    if (ImGui::Button("Reset Font Sizes")) {
-        settings.font_scale_can = 1.0f;
-        settings.font_scale_obd = 1.0f;
+    // ----- ELM327 Bridge (GUI control) -----
+    ImGui::SeparatorText("ELM327 Bridge");
+    static std::vector<std::string> com_ports_display;
+    static std::vector<std::string> com_ports_token;
+    static int com_idx = -1;
+    static bool com_scanned = false;
+    if (!com_scanned) {
+        canmatik::SerialProvider sprov;
+        auto devs = sprov.enumerate();
+        int idx = 0;
+        for (auto& d : devs) {
+            std::string label = d.name;
+            // try to extract COM token like COM5
+            std::string token;
+            try {
+                std::smatch m;
+                std::regex re("(COM\\d+)", std::regex_constants::icase);
+                if (std::regex_search(label, m, re) && m.size() > 1) token = m.str(1);
+                else {
+                    // fallback: find any digit sequence and prefix with COM
+                    std::regex r2("(\\d+)");
+                    if (std::regex_search(label, m, r2) && m.size() > 1) token = std::string("COM") + m.str(1);
+                }
+            } catch(...) {}
+            if (token.empty()) {
+                // ensure unique display if token missing
+                label += std::string(" #") + std::to_string(idx);
+                token = label; // fallback token will be full label
+            }
+            com_ports_display.push_back(label);
+            com_ports_token.push_back(token);
+            ++idx;
+        }
+        com_scanned = true;
     }
 
-    // ----- Font Colors section -----
-    ImGui::SeparatorText("Font Colors");
-    ImGui::TextDisabled("Click a color swatch to change it. Preview text is shown next to each.");
+    ImGui::SetNextItemWidth(220);
+    if (ImGui::BeginCombo("Serial port", (com_idx >= 0 && com_idx < static_cast<int>(com_ports_display.size())) ? com_ports_display[com_idx].c_str() : "<select port>")) {
+        for (int i = 0; i < static_cast<int>(com_ports_display.size()); ++i) {
+            bool sel = (i == com_idx);
+            ImGui::PushID(i);
+            if (ImGui::Selectable(com_ports_display[i].c_str(), sel)) com_idx = i;
+            if (sel) ImGui::SetItemDefaultFocus();
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
 
-    // CAN Messages panel colors
-    ImGui::Text("CAN Messages:");
-    ImGui::ColorEdit4("New ID##can_new", settings.color_can_new,
-                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+    // Provider selection: query available providers now and fall back to settings.provider
+    auto local_providers = capture.scan_providers(false);
+    int local_idx = -1;
+    for (int i = 0; i < static_cast<int>(local_providers.size()); ++i)
+        if (local_providers[i] == settings.provider) { local_idx = i; break; }
+    std::string prov_display = (local_idx >= 0 && local_idx < static_cast<int>(local_providers.size())) ? local_providers[local_idx] : settings.provider;
+    ImGui::SetNextItemWidth(260);
+    ImGui::TextDisabled("J2534 provider: %s", prov_display.c_str());
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(settings.color_can_new[0], settings.color_can_new[1],
-                              settings.color_can_new[2], settings.color_can_new[3]),
-                       "0x1A3 New message");
+    ImGui::Checkbox("Terminated", &settings.proxy_terminated);
 
-    ImGui::ColorEdit4("Changed##can_chg", settings.color_can_changed,
-                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(settings.color_can_changed[0], settings.color_can_changed[1],
-                              settings.color_can_changed[2], settings.color_can_changed[3]),
-                       "A0 FF 3C Changed bytes");
+    // Serial baud selector for ELM327 bridge
+    static const int kBaudOptions[] = {9600, 19200, 38400, 57600, 115200};
+    int baud_idx = 0;
+    for (int i = 0; i < static_cast<int>(sizeof(kBaudOptions)/sizeof(kBaudOptions[0])); ++i) if (kBaudOptions[i] == static_cast<int>(settings.elm327_baud)) { baud_idx = i; break; }
+    ImGui::SetNextItemWidth(160);
+    if (ImGui::Combo("Baud rate", &baud_idx, "9600\0" "19200\0" "38400\0" "57600\0" "115200\0")) {
+        settings.elm327_baud = static_cast<uint32_t>(kBaudOptions[baud_idx]);
+    }
 
-    ImGui::ColorEdit4("DLC Changed##can_dlc", settings.color_can_dlc,
-                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(settings.color_can_dlc[0], settings.color_can_dlc[1],
-                              settings.color_can_dlc[2], settings.color_can_dlc[3]),
-                       "8 DLC changed");
+    // Bridge start/stop
+    static std::shared_ptr<Elm327Bridge> bridge_instance;
+    static std::thread bridge_thread;
+    static std::atomic<bool> bridge_running{false};
+    static std::atomic<int> bridge_exit_code{0};
 
-    ImGui::ColorEdit4("Normal##can_def", settings.color_can_default,
-                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(settings.color_can_default[0], settings.color_can_default[1],
-                              settings.color_can_default[2], settings.color_can_default[3]),
-                       "0x212 Normal text");
+    if (!bridge_running) {
+        if (ImGui::Button("Start ELM327 Bridge") ) {
+            if (com_idx < 0 || com_idx >= static_cast<int>(com_ports_display.size())) {
+                // show error
+                // set temporary state.error_message
+                state.error_message = "Select a serial port first";
+            } else {
+                std::string serial = com_ports_display[com_idx];
+                std::string com_token = com_ports_token[com_idx];
+                std::string provider_name = prov_display;
+                bridge_instance = std::make_shared<Elm327Bridge>(com_token, provider_name, &collector, settings.proxy_terminated, settings.elm327_baud);
+                bridge_running.store(true);
+                bridge_exit_code.store(0);
+                // copy shared_ptr to a local variable and move into the thread to ensure
+                // the thread owns the instance and we avoid capturing a static variable.
+                auto bridge_copy = bridge_instance;
+                bridge_thread = std::thread([bridge_copy]() {
+                    int rc = bridge_copy->run();
+                    bridge_exit_code.store(rc);
+                    bridge_running.store(false);
+                });
+            }
+        }
+    } else {
+        if (ImGui::Button("Stop ELM327 Bridge")) {
+            if (bridge_instance) bridge_instance->stop();
+            if (bridge_thread.joinable()) bridge_thread.join();
+            bridge_instance.reset();
+            bridge_running.store(false);
+            int rc = bridge_exit_code.load();
+            if (rc != 0) state.error_message = "ELM327 bridge exited with error";
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("Running on %s", (com_idx >= 0 && com_idx < static_cast<int>(com_ports_display.size())) ? com_ports_display[com_idx].c_str() : "<unknown>");
+    }
 
-    ImGui::ColorEdit4("Watched##can_watch", settings.color_can_watched,
-                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(settings.color_can_watched[0], settings.color_can_watched[1],
-                              settings.color_can_watched[2], settings.color_can_watched[3]),
-                       "0x7E8 Watched ID");
+    // If the bridge terminated on its own, join the thread and show error (if any).
+    if (!bridge_running.load() && bridge_thread.joinable()) {
+        bridge_thread.join();
+        if (bridge_instance) {
+            auto err = bridge_instance->last_error();
+            if (!err.empty()) state.error_message = std::string("ELM327 bridge stopped: ") + err;
+        }
+        bridge_instance.reset();
+        bridge_exit_code.store(0);
+    }
 
-    // OBD Data panel colors
-    ImGui::Spacing();
-    ImGui::Text("OBD Data:");
-    ImGui::ColorEdit4("Value Changed##obd_chg", settings.color_obd_changed,
-                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(settings.color_obd_changed[0], settings.color_obd_changed[1],
-                              settings.color_obd_changed[2], settings.color_obd_changed[3]),
-                       "3200.5 RPM (changed)");
+        // ----- Appearance: combined font size + color previews -----
+        ImGui::SeparatorText("Fonts & Colors");
 
-    ImGui::ColorEdit4("Normal##obd_norm", settings.color_obd_normal,
-                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(settings.color_obd_normal[0], settings.color_obd_normal[1],
-                              settings.color_obd_normal[2], settings.color_obd_normal[3]),
-                       "Engine RPM");
+        // Bus Messages: font scale control and color swatches with preview
+        ImGui::Text("Bus Messages");
+        // Show a scaled sample above the slider
+        ImGui::SetWindowFontScale(settings.font_scale_can);
+        ImGui::TextColored(ImVec4(settings.color_can_default[0], settings.color_can_default[1],
+                      settings.color_can_default[2], settings.color_can_default[3]),
+                  "0x1A3 8 01 FF 3C 12 34 56 78");
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::SetNextItemWidth(220);
+        if (ImGui::SliderFloat("Font Scale##can_font", &settings.font_scale_can, 0.5f, 3.0f, "%.1fx"))
+            settings.font_scale_can = std::clamp(settings.font_scale_can, 0.5f, 3.0f);
+        ImGui::ColorEdit4("New ID##can_new", settings.color_can_new,
+                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(settings.color_can_new[0], settings.color_can_new[1],
+                      settings.color_can_new[2], settings.color_can_new[3]),
+                  "0x1A3 New message");
 
-    ImGui::ColorEdit4("Dim / Raw##obd_dim", settings.color_obd_dim,
-                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(settings.color_obd_dim[0], settings.color_obd_dim[1],
-                              settings.color_obd_dim[2], settings.color_obd_dim[3]),
-                       "0C 80 raw hex");
+        ImGui::ColorEdit4("Changed##can_chg", settings.color_can_changed,
+                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(settings.color_can_changed[0], settings.color_can_changed[1],
+                      settings.color_can_changed[2], settings.color_can_changed[3]),
+                  "A0 FF 3C Changed bytes");
+
+        ImGui::ColorEdit4("DLC Changed##can_dlc", settings.color_can_dlc,
+                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(settings.color_can_dlc[0], settings.color_can_dlc[1],
+                      settings.color_can_dlc[2], settings.color_can_dlc[3]),
+                  "8 DLC changed");
+
+        ImGui::ColorEdit4("Normal##can_def", settings.color_can_default,
+                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(settings.color_can_default[0], settings.color_can_default[1],
+                      settings.color_can_default[2], settings.color_can_default[3]),
+                  "0x212 Normal text");
+
+        ImGui::ColorEdit4("Watched##can_watch", settings.color_can_watched,
+                 ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreview);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(settings.color_can_watched[0], settings.color_can_watched[1],
+                      settings.color_can_watched[2], settings.color_can_watched[3]),
+                  "0x7E8 Watched ID");
+
+            // Preview combined scaled text for Bus Messages and OBD Data
+            ImGui::Spacing();
+            ImGui::TextDisabled("Preview:");
+            // OBD font control lives in Settings (font sliders)
+            ImGui::SetNextItemWidth(120);
+            if (ImGui::SliderFloat("OBD Data##fontscale_obd", &settings.font_scale_obd, 0.5f, 3.0f, "%.1fx"))
+                settings.font_scale_obd = std::clamp(settings.font_scale_obd, 0.5f, 3.0f);
+
+            // OBD preview uses current OBD font scale
+            ImGui::SetWindowFontScale(settings.font_scale_obd);
+            ImGui::TextColored(ImVec4(settings.color_obd_normal[0], settings.color_obd_normal[1],
+                                      settings.color_obd_normal[2], settings.color_obd_normal[3]),
+                               "OBD data: Engine RPM 3200.5");
+            ImGui::SetWindowFontScale(1.0f);
 
     // Reset to defaults button
     if (ImGui::Button("Reset Colors to Defaults")) {
@@ -138,7 +249,7 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
     static bool scanned_once = false;
 
     if (!scanned_once) {
-        provider_names = capture.scan_providers(settings.mock_enabled);
+        provider_names = capture.scan_providers(false);
         for (int i = 0; i < static_cast<int>(provider_names.size()); ++i)
             if (provider_names[i] == settings.provider) provider_idx = i;
         scanned_once = true;
@@ -149,17 +260,19 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
                                         ? provider_names[provider_idx].c_str() : "<none>")) {
         for (int i = 0; i < static_cast<int>(provider_names.size()); ++i) {
             bool selected = (i == provider_idx);
+            ImGui::PushID(i);
             if (ImGui::Selectable(provider_names[i].c_str(), selected)) {
                 provider_idx = i;
                 settings.provider = provider_names[i];
             }
             if (selected) ImGui::SetItemDefaultFocus();
+            ImGui::PopID();
         }
         ImGui::EndCombo();
     }
     ImGui::SameLine();
     if (ImGui::Button("Scan")) {
-        provider_names = capture.scan_providers(settings.mock_enabled);
+        provider_names = capture.scan_providers(false);
         provider_idx = -1;
         for (int i = 0; i < static_cast<int>(provider_names.size()); ++i)
             if (provider_names[i] == settings.provider) provider_idx = i;
@@ -193,7 +306,7 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
     }
 
     // Mock checkbox
-    ImGui::Checkbox("Mock mode", &settings.mock_enabled);
+    // Mock mode removed from GUI — use CLI for mock/demo mode
 
     // Connect / Disconnect button (main one is on CAN tab)
     ImGui::TextDisabled(capture.is_connected() ? "Connected" : "Disconnected");
@@ -314,7 +427,7 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
     }
 
     if (!install_status.empty()) {
-        bool ok = install_status.starts_with("Installed");
+        bool ok = (install_status.rfind("Installed", 0) == 0);
         ImGui::TextColored(ok ? ImVec4(0.3f, 1.0f, 0.3f, 1.0f)
                               : ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
                            "%s", install_status.c_str());
@@ -339,7 +452,7 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
     }
 
     if (!uninstall_status.empty()) {
-        bool ok = uninstall_status.starts_with("Removed");
+        bool ok = (uninstall_status.rfind("Removed", 0) == 0);
         ImGui::TextColored(ok ? ImVec4(0.3f, 1.0f, 0.3f, 1.0f)
                               : ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
                            "%s", uninstall_status.c_str());
@@ -408,123 +521,7 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
     ImGui::SetNextItemWidth(120);
     if (ImGui::InputInt("History size (samples)", &whs))
         settings.watchdog_history_size = static_cast<uint32_t>(std::clamp(whs, 10, 10000));
-    ImGui::TextDisabled("Max decoded value samples stored per watched ID.");
-
-    // ----- OBD Settings section -----
-    ImGui::SeparatorText("OBD Settings");
-    int interval = static_cast<int>(settings.obd_interval_ms);
-    ImGui::SetNextItemWidth(100);
-    if (ImGui::InputInt("Query interval (ms)", &interval))
-        settings.obd_interval_ms = static_cast<uint32_t>(std::clamp(interval, 50, 5000));
-
-    // PID list (hex + human-readable name)
-    ImGui::Text("Selected PIDs:");
-    int remove_idx = -1;
-    for (size_t i = 0; i < settings.obd_pids.size(); ++i) {
-        ImGui::PushID(static_cast<int>(i));
-        auto* def = pid_lookup(0x01, settings.obd_pids[i]);
-        if (def)
-            ImGui::BulletText("0x%02X - %s", settings.obd_pids[i], def->name);
-        else
-            ImGui::BulletText("0x%02X", settings.obd_pids[i]);
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Remove"))
-            remove_idx = static_cast<int>(i);
-        ImGui::PopID();
-    }
-    if (remove_idx >= 0)
-        settings.obd_pids.erase(settings.obd_pids.begin() + remove_idx);
-
-    // Known PID dropdown
-    struct KnownPid { uint8_t id; const char* label; };
-    static const KnownPid known_pids[] = {
-        {0x00, "00 - PIDs supported [01-20]"},
-        {0x04, "04 - Engine Load"},
-        {0x05, "05 - Coolant Temp"},
-        {0x06, "06 - Short Fuel Trim Bank 1"},
-        {0x07, "07 - Long Fuel Trim Bank 1"},
-        {0x0B, "0B - Intake MAP"},
-        {0x0C, "0C - Engine RPM"},
-        {0x0D, "0D - Vehicle Speed"},
-        {0x0E, "0E - Timing Advance"},
-        {0x0F, "0F - Intake Air Temp"},
-        {0x10, "10 - MAF Rate"},
-        {0x11, "11 - Throttle Position"},
-        {0x1C, "1C - OBD Standard"},
-        {0x1F, "1F - Run Time"},
-        {0x21, "21 - Distance with MIL"},
-        {0x2F, "2F - Fuel Level"},
-        {0x31, "31 - Distance since codes cleared"},
-        {0x33, "33 - Barometric Pressure"},
-        {0x42, "42 - Control Module Voltage"},
-        {0x46, "46 - Ambient Air Temp"},
-        {0x49, "49 - Accelerator Pedal D"},
-        {0x51, "51 - Fuel Type"},
-        {0x5C, "5C - Engine Oil Temp"},
-        {0x5E, "5E - Fuel Rate"},
-    };
-    static int known_sel = -1;
-    ImGui::SetNextItemWidth(250);
-    if (ImGui::BeginCombo("Known PIDs", known_sel >= 0
-            ? known_pids[known_sel].label : "Select a PID...")) {
-        for (int i = 0; i < static_cast<int>(std::size(known_pids)); ++i) {
-            if (ImGui::Selectable(known_pids[i].label, i == known_sel)) {
-                known_sel = i;
-                uint8_t pid = known_pids[i].id;
-                if (std::find(settings.obd_pids.begin(), settings.obd_pids.end(), pid)
-                        == settings.obd_pids.end())
-                    settings.obd_pids.push_back(pid);
-            }
-        }
-        ImGui::EndCombo();
-    }
-
-    // Manual hex PID add
-    static char pid_buf[8] = {};
-    ImGui::SetNextItemWidth(80);
-    ImGui::InputText("##AddPID", pid_buf, sizeof(pid_buf));
-    ImGui::SameLine();
-    if (ImGui::Button("Add PID")) {
-        unsigned val = 0;
-        if (sscanf(pid_buf, "%x", &val) == 1 && val <= 0xFF) {
-            uint8_t pid = static_cast<uint8_t>(val);
-            if (std::find(settings.obd_pids.begin(), settings.obd_pids.end(), pid)
-                    == settings.obd_pids.end()) {
-                settings.obd_pids.push_back(pid);
-            }
-            pid_buf[0] = '\0';
-        }
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("Hex (00-FF)");
-
-    // Query ECU for supported PIDs
-    if (capture.is_connected()) {
-        if (ImGui::Button("Query ECU Supported PIDs")) {
-            auto* ch = capture.channel();
-            if (ch) {
-                ObdSession session(*ch);
-                auto result = session.query_supported_pids();
-                if (result) {
-                    settings.obd_pids.clear();
-                    for (auto& sp : *result) {
-                        for (auto pid : sp.pids) {
-                            // Skip supported-PIDs-range PIDs (0x00, 0x20, 0x40)
-                            if (pid == 0x00 || pid == 0x20 || pid == 0x40 || pid == 0x60)
-                                continue;
-                            if (std::find(settings.obd_pids.begin(), settings.obd_pids.end(), pid)
-                                    == settings.obd_pids.end())
-                                settings.obd_pids.push_back(pid);
-                        }
-                    }
-                } else {
-                    state.error_message = result.error();
-                }
-            }
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("Auto-detect from ECU");
-    }
+    ImGui::TextDisabled("Max decoded value samples stored per watched ID.");    
 }
 
 } // namespace canmatik

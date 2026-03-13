@@ -32,6 +32,9 @@ public:
     /// Configure whether connect() should throw (simulates connection failure).
     void set_fail_connect(bool fail) { fail_connect_ = fail; }
 
+    /// Configure the simulated frame rate (frames per second). Zero = silence.
+    void set_frame_rate(uint32_t rate) { frame_rate_ = rate; }
+
 private:
     std::vector<DeviceInfo> devices_;
     bool fail_connect_ = false;

@@ -189,7 +189,7 @@ Register CANmatik as a J2534 provider so that other diagnostic tools
 
 Install or remove the fake J2534 DLL in the Windows Registry:
 
-- Choose a **preset** profile (e.g., "Tactrix OpenPort 2.0") or enter a custom
+- Choose a **preset** profile (e.g., "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM") or enter a custom
   interface name
 - Click **Install Proxy Interface** (may require running as Administrator)
 - Use the **Installed J2534 Interfaces** section to view or remove registered
@@ -263,7 +263,7 @@ canmatik.exe scan --json
 Connect to an adapter and display CAN frames in real time.
 
 ```powershell
-canmatik.exe monitor --provider "Tactrix OpenPort 2.0" --bitrate 500000
+canmatik.exe monitor --provider "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM" --bitrate 500000
 canmatik.exe monitor --mock --filter 0x7E8
 ```
 
@@ -272,7 +272,7 @@ canmatik.exe monitor --mock --filter 0x7E8
 Monitor and record traffic to a log file.
 
 ```powershell
-canmatik.exe record --provider "Tactrix OpenPort 2.0" -o session.asc
+canmatik.exe record --provider "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM" -o session.asc
 canmatik.exe record --mock -o session.jsonl -f jsonl
 ```
 
@@ -292,20 +292,20 @@ OBD-II diagnostics with subcommands:
 
 ```powershell
 # Query supported PIDs
-canmatik.exe obd query --supported --provider "Tactrix OpenPort 2.0"
+canmatik.exe obd query --supported --provider "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM"
 
 # Stream live engine data
-canmatik.exe obd stream --provider "Tactrix OpenPort 2.0"
+canmatik.exe obd stream --provider "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM"
 canmatik.exe obd stream --obd-config engine_only.yaml --interval 200
 
 # Read DTCs
-canmatik.exe obd dtc --provider "Tactrix OpenPort 2.0"
+canmatik.exe obd dtc --provider "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM"
 
 # Clear DTCs (requires --force)
-canmatik.exe obd dtc --clear --force --provider "Tactrix OpenPort 2.0"
+canmatik.exe obd dtc --clear --force --provider "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM"
 
 # Vehicle info (VIN, Cal ID, ECU name)
-canmatik.exe obd info --provider "Tactrix OpenPort 2.0"
+canmatik.exe obd info --provider "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM"
 ```
 
 #### `demo`
@@ -333,7 +333,7 @@ Show only changed CAN frames with diff highlighting (console mode).
 
 ```powershell
 canmatik.exe sniff --mock
-canmatik.exe sniff --provider "Tactrix OpenPort 2.0" --filter 0x7E0-0x7EF
+canmatik.exe sniff --provider "Tactrix OpenPort 2.0 J2534 ISO/CAN/VPW/PWM" --filter 0x7E0-0x7EF
 ```
 
 ---

@@ -4,6 +4,7 @@
 
 #include "cli/cli_app.h"
 #include "platform/win32/j2534_provider.h"
+#include "platform/win32/serial_provider.h"
 #include "mock/mock_provider.h"
 #include "transport/device_info.h"
 
@@ -84,14 +85,21 @@ int dispatch_scan(CLI::App& /*sub*/, const GlobalOptions& globals, const Config&
         LOG_INFO("Using MockProvider for scan");
         provider = std::make_unique<MockProvider>();
     } else {
-        LOG_INFO("Using J2534Provider for scan");
-        provider = std::make_unique<J2534Provider>();
+        LOG_INFO("Using J2534Provider + SerialProvider for scan");
+        // Enumerate both J2534 providers and serial COM ports
     }
 
     // Enumerate devices — registry failure surfaces as an exception
     std::vector<DeviceInfo> providers;
     try {
-        providers = provider->enumerate();
+        // J2534
+        J2534Provider jprov;
+        auto jlist = jprov.enumerate();
+        providers.insert(providers.end(), jlist.begin(), jlist.end());
+        // Serial
+        SerialProvider sprov;
+        auto slist = sprov.enumerate();
+        providers.insert(providers.end(), slist.begin(), slist.end());
         LOG_INFO("Scan found {} provider(s)", providers.size());
     } catch (const std::exception& ex) {
         LOG_ERROR("Registry scan failed: {}", ex.what());

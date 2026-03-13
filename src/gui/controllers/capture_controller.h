@@ -4,8 +4,9 @@
 /// Live capture lifecycle: connect, start, pause, stop, disconnect.
 
 #include "gui/frame_collector.h"
-#include "services/capture_service.h"
 #include "services/session_service.h"
+#include "services/global_capture.h"
+#include "core/capture_sink.h"
 
 #include <memory>
 #include <string>
@@ -61,7 +62,7 @@ public:
 
 private:
     SessionService session_;
-    CaptureService capture_;
+    ICaptureSync* collector_ = nullptr;
     bool paused_ = false;
     std::vector<DeviceInfo> scanned_;
 };

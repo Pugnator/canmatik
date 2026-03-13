@@ -13,6 +13,7 @@
 #include "obd/pid_table.h"
 #include "obd/query_scheduler.h"
 #include "platform/win32/j2534_provider.h"
+#include "platform/win32/serial_provider.h"
 #include "services/capture_service.h"
 #include "services/record_service.h"
 #include "services/session_service.h"
@@ -47,6 +48,11 @@ std::unique_ptr<SessionService> connect_obd(const GlobalOptions& globals, const 
     if (globals.mock) {
         LOG_INFO("Using MockProvider for OBD");
         session->setProvider(std::make_unique<MockProvider>());
+    } else if (!config.provider.empty() &&
+               (config.provider.rfind("COM", 0) == 0 || config.provider.rfind("com", 0) == 0)) {
+        // If user specified a COM port (e.g. COM3), use SerialProvider
+        LOG_INFO("Using SerialProvider for OBD (provider={})", config.provider);
+        session->setProvider(std::make_unique<canmatik::SerialProvider>());
     } else {
         session->setProvider(std::make_unique<J2534Provider>());
     }
