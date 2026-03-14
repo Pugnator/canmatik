@@ -12,7 +12,7 @@ class SessionService;
 
 class Elm327Bridge {
 public:
-    Elm327Bridge(std::string serial_port, std::string provider_name, ICaptureSync* frame_sink = nullptr, bool terminated = false, uint32_t baud = 38400);
+    Elm327Bridge(std::string serial_port, std::string provider_name, ICaptureSync* frame_sink = nullptr, bool terminated = false, uint32_t baud = 38400, std::string mock_script = "");
     ~Elm327Bridge();
 
     // Run the bridge (blocking). Returns when user interrupts or on error.
@@ -32,6 +32,7 @@ private:
     std::string last_error_; // protected by internal usage from single thread
     bool terminated_mode_ = false;
     uint32_t serial_baud_ = 38400;
+    std::string mock_script_path_;
     void handle_line(const std::string& line);
 };
 

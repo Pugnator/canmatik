@@ -75,14 +75,19 @@ std::vector<CanFrame> SerialChannel::read(uint32_t timeout_ms) {
 
     if (read == 0) return out;
 
-    // Package read bytes into a single CanFrame (non-standard use)
-    CanFrame f{};
-    f.arbitration_id = 0x7FF; // sentinel: serial
-    f.type = FrameType::Standard;
-    f.dlc = static_cast<uint8_t>(std::min<DWORD>(read, 8));
-    for (uint8_t i = 0; i < f.dlc; ++i) f.data[i] = buf[i];
-    f.host_timestamp_us = 0;
-    out.push_back(f);
+    // Package all read bytes into CanFrames (up to 8 bytes each)
+    DWORD off = 0;
+    while (off < read) {
+        CanFrame f{};
+        f.arbitration_id = 0x7FF; // sentinel: serial
+        f.type = FrameType::Standard;
+        DWORD chunk = std::min<DWORD>(read - off, 8);
+        f.dlc = static_cast<uint8_t>(chunk);
+        for (DWORD i = 0; i < chunk; ++i) f.data[i] = buf[off + i];
+        f.host_timestamp_us = 0;
+        out.push_back(f);
+        off += chunk;
+    }
     return out;
 }
 

@@ -43,6 +43,7 @@ std::string GuiSettings::load(const std::string& path) {
     if (j.contains("window_width"))      window_width      = j["window_width"].get<int>();
     if (j.contains("window_height"))     window_height     = j["window_height"].get<int>();
     if (j.contains("last_file_path"))    last_file_path    = j["last_file_path"].get<std::string>();
+    if (j.contains("mock_script_path"))   mock_script_path   = j["mock_script_path"].get<std::string>();
 
     if (j.contains("color_scheme")) {
         auto cs = j["color_scheme"].get<std::string>();
@@ -157,6 +158,7 @@ std::string GuiSettings::save(const std::string& path) const {
     j["window_width"]      = window_width;
     j["window_height"]     = window_height;
     j["last_file_path"]    = last_file_path;
+    j["mock_script_path"]   = mock_script_path;
 
     json pids = json::array();
     for (auto p : obd_pids) pids.push_back(static_cast<int>(p));

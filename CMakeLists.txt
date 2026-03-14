@@ -164,6 +164,8 @@ target_link_libraries(canmatik_platform PUBLIC
 add_library(canmatik_mock STATIC
     src/mock/mock_provider.cpp
     src/mock/mock_channel.cpp
+    src/mock/scriptable_mock_channel.cpp
+    src/mock/scriptable_mock_provider.cpp
 )
 
 target_include_directories(canmatik_mock PUBLIC
@@ -172,6 +174,7 @@ target_include_directories(canmatik_mock PUBLIC
 
 target_link_libraries(canmatik_mock PUBLIC
     canmatik_core
+    yaml-cpp
 )
 
 # ---------------------------------------------------------------------------
@@ -192,6 +195,7 @@ target_include_directories(canmatik_services PUBLIC
 
 target_link_libraries(canmatik_services PUBLIC
     canmatik_core
+    canmatik_mock
 )
 
 # ---------------------------------------------------------------------------

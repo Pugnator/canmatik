@@ -28,6 +28,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 #include <unordered_map>
 

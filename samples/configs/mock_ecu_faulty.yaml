@@ -1,0 +1,110 @@
+# ==========================================================================
+#  CANmatik — Scriptable ECU Mock: Faulty Engine
+#
+#  Same base ECU but with MIL ON and two stored DTCs:
+#    P0300 — Random/Multiple Cylinder Misfire Detected
+#    P0171 — System Too Lean (Bank 1)
+#
+#  Use this to test DTC reading / clearing flows.
+# ==========================================================================
+
+name: "Faulty Engine ECU"
+description: "Engine with MIL on, P0300 + P0171 stored."
+
+responses:
+  # ------------------------------------------------------------------
+  # Mode 01 — Current Data (selected PIDs)
+  # ------------------------------------------------------------------
+
+  # PID 00 — Supported PIDs [01-20]
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x00] }
+    response: { id: 0x7E8, data: [0x06, 0x41, 0x00, 0xBE, 0x3E, 0xB8, 0x13] }
+  - request: { id: 0x7E0, data: [0x02, 0x01, 0x00] }
+    response: { id: 0x7E8, data: [0x06, 0x41, 0x00, 0xBE, 0x3E, 0xB8, 0x13] }
+
+  # PID 20 — Supported PIDs [21-40]
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x20] }
+    response: { id: 0x7E8, data: [0x06, 0x41, 0x20, 0x80, 0x01, 0xA0, 0x01] }
+
+  # PID 40 — Supported PIDs [41-60]
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x40] }
+    response: { id: 0x7E8, data: [0x06, 0x41, 0x40, 0x7E, 0xDC, 0x00, 0x00] }
+
+  # PID 01 — Monitor status: MIL ON, 2 DTCs
+  #   Byte A = 0x82 → MIL bit set (0x80) + DTC count 2
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x01] }
+    response: { id: 0x7E8, data: [0x06, 0x41, 0x01, 0x82, 0x07, 0xE5, 0xE5] }
+  - request: { id: 0x7E0, data: [0x02, 0x01, 0x01] }
+    response: { id: 0x7E8, data: [0x06, 0x41, 0x01, 0x82, 0x07, 0xE5, 0xE5] }
+
+  # PID 04 — Engine load: 45%
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x04] }
+    response: { id: 0x7E8, data: [0x03, 0x41, 0x04, 0x73] }
+
+  # PID 05 — Coolant temp: 95°C → 0x87 (95+40=135)
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x05] }
+    response: { id: 0x7E8, data: [0x03, 0x41, 0x05, 0x87] }
+  - request: { id: 0x7E0, data: [0x02, 0x01, 0x05] }
+    response: { id: 0x7E8, data: [0x03, 0x41, 0x05, 0x87] }
+
+  # PID 0C — RPM: 850 (idle, rough)  → 0x0D48
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x0C] }
+    response: { id: 0x7E8, data: [0x04, 0x41, 0x0C, 0x0D, 0x48] }
+  - request: { id: 0x7E0, data: [0x02, 0x01, 0x0C] }
+    response: { id: 0x7E8, data: [0x04, 0x41, 0x0C, 0x0D, 0x48] }
+
+  # PID 0D — Speed: 0 km/h (idling)
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x0D] }
+    response: { id: 0x7E8, data: [0x03, 0x41, 0x0D, 0x00] }
+
+  # PID 11 — Throttle: 15%
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x11] }
+    response: { id: 0x7E8, data: [0x03, 0x41, 0x11, 0x26] }
+
+  # PID 1C — OBD standard: ISO 15765-4 (CAN)
+  - request: { id: 0x7DF, data: [0x02, 0x01, 0x1C] }
+    response: { id: 0x7E8, data: [0x03, 0x41, 0x1C, 0x06] }
+
+  # ------------------------------------------------------------------
+  # Mode 03 — Stored DTCs: P0300 + P0171
+  #
+  #   P0300 = 0x0300   P0171 = 0x0171
+  #   Frame: [num_bytes, 0x43, count, DTC1-hi, DTC1-lo, DTC2-hi, DTC2-lo]
+  # ------------------------------------------------------------------
+  - request: { id: 0x7DF, data: [0x01, 0x03] }
+    response: { id: 0x7E8, data: [0x06, 0x43, 0x02, 0x03, 0x00, 0x01, 0x71] }
+  - request: { id: 0x7E0, data: [0x01, 0x03] }
+    response: { id: 0x7E8, data: [0x06, 0x43, 0x02, 0x03, 0x00, 0x01, 0x71] }
+
+  # ------------------------------------------------------------------
+  # Mode 04 — Clear DTCs (positive ack)
+  # ------------------------------------------------------------------
+  - request: { id: 0x7DF, data: [0x01, 0x04] }
+    response: { id: 0x7E8, data: [0x01, 0x44] }
+  - request: { id: 0x7E0, data: [0x01, 0x04] }
+    response: { id: 0x7E8, data: [0x01, 0x44] }
+
+  # ------------------------------------------------------------------
+  # Mode 07 — Pending DTCs: P0300 only (intermittent misfire)
+  # ------------------------------------------------------------------
+  - request: { id: 0x7DF, data: [0x01, 0x07] }
+    response: { id: 0x7E8, data: [0x04, 0x47, 0x01, 0x03, 0x00] }
+  - request: { id: 0x7E0, data: [0x01, 0x07] }
+    response: { id: 0x7E8, data: [0x04, 0x47, 0x01, 0x03, 0x00] }
+
+  # ------------------------------------------------------------------
+  # Mode 09 — Vehicle Information
+  # ------------------------------------------------------------------
+  - request: { id: 0x7DF, data: [0x02, 0x09, 0x00] }
+    response: { id: 0x7E8, data: [0x06, 0x49, 0x00, 0x54, 0x40, 0x00, 0x00] }
+
+  # PID 02 — VIN: "WVWZZZ3CZWE123456"
+  - request: { id: 0x7DF, data: [0x02, 0x09, 0x02] }
+    response:
+      - { id: 0x7E8, data: [0x10, 0x14, 0x49, 0x02, 0x01, 0x57, 0x56, 0x57] }
+      - { id: 0x7E8, data: [0x21, 0x5A, 0x5A, 0x5A, 0x33, 0x43, 0x5A, 0x57] }
+      - { id: 0x7E8, data: [0x22, 0x45, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36] }
+
+  # Flow control absorb
+  - request: { id: 0x7E0, data: [0x30, 0x00, 0x00] }
+    response: []

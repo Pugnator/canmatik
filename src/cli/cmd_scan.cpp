@@ -79,27 +79,24 @@ int dispatch_scan(CLI::App& /*sub*/, const GlobalOptions& globals, const Config&
     LOG_DEBUG("dispatch_scan: mock={}, json={}, verbose={}",
               globals.mock, globals.json, globals.verbose);
 
-    // Select provider backend
-    std::unique_ptr<IDeviceProvider> provider;
-    if (globals.mock) {
-        LOG_INFO("Using MockProvider for scan");
-        provider = std::make_unique<MockProvider>();
-    } else {
-        LOG_INFO("Using J2534Provider + SerialProvider for scan");
-        // Enumerate both J2534 providers and serial COM ports
-    }
-
     // Enumerate devices — registry failure surfaces as an exception
     std::vector<DeviceInfo> providers;
     try {
-        // J2534
-        J2534Provider jprov;
-        auto jlist = jprov.enumerate();
-        providers.insert(providers.end(), jlist.begin(), jlist.end());
-        // Serial
-        SerialProvider sprov;
-        auto slist = sprov.enumerate();
-        providers.insert(providers.end(), slist.begin(), slist.end());
+        if (globals.mock) {
+            LOG_INFO("Using MockProvider for scan");
+            MockProvider mprov;
+            providers = mprov.enumerate();
+        } else {
+            LOG_INFO("Using J2534Provider + SerialProvider for scan");
+            // J2534
+            J2534Provider jprov;
+            auto jlist = jprov.enumerate();
+            providers.insert(providers.end(), jlist.begin(), jlist.end());
+            // Serial
+            SerialProvider sprov;
+            auto slist = sprov.enumerate();
+            providers.insert(providers.end(), slist.begin(), slist.end());
+        }
         LOG_INFO("Scan found {} provider(s)", providers.size());
     } catch (const std::exception& ex) {
         LOG_ERROR("Registry scan failed: {}", ex.what());

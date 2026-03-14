@@ -9,6 +9,12 @@
 #include "services/elm327_bridge.h"
 #include "platform/win32/serial_provider.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <commdlg.h>
+
 #include <algorithm>
 #include <format>
 #include <string>
@@ -103,6 +109,35 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
         settings.elm327_baud = static_cast<uint32_t>(kBaudOptions[baud_idx]);
     }
 
+    // YAML ECU mock script (only relevant when Terminated is checked)
+    static char script_buf[512] = {};
+    static bool script_buf_init = false;
+    if (!script_buf_init) {
+        auto n = settings.mock_script_path.copy(script_buf, sizeof(script_buf) - 1);
+        script_buf[n] = '\0';
+        script_buf_init = true;
+    }
+    ImGui::SetNextItemWidth(360);
+    if (ImGui::InputText("ECU script (YAML)", script_buf, sizeof(script_buf))) {
+        settings.mock_script_path = script_buf;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("...##script_browse")) {
+        // Win32 file open dialog
+        char fname[MAX_PATH] = {};
+        OPENFILENAMEA ofn{};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.lpstrFilter = "YAML files\0*.yaml;*.yml\0All files\0*.*\0";
+        ofn.lpstrFile = fname;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+        if (GetOpenFileNameA(&ofn)) {
+            settings.mock_script_path = fname;
+            auto n2 = settings.mock_script_path.copy(script_buf, sizeof(script_buf) - 1);
+            script_buf[n2] = '\0';
+        }
+    }
+
     // Bridge start/stop
     static std::shared_ptr<Elm327Bridge> bridge_instance;
     static std::thread bridge_thread;
@@ -119,7 +154,7 @@ void render_settings_panel(GuiSettings& settings, GuiState& state,
                 std::string serial = com_ports_display[com_idx];
                 std::string com_token = com_ports_token[com_idx];
                 std::string provider_name = prov_display;
-                bridge_instance = std::make_shared<Elm327Bridge>(com_token, provider_name, &collector, settings.proxy_terminated, settings.elm327_baud);
+                bridge_instance = std::make_shared<Elm327Bridge>(com_token, provider_name, &collector, settings.proxy_terminated, settings.elm327_baud, settings.mock_script_path);
                 bridge_running.store(true);
                 bridge_exit_code.store(0);
                 // copy shared_ptr to a local variable and move into the thread to ensure

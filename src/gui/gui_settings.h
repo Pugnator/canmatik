@@ -70,6 +70,7 @@ struct GuiSettings {
 
     // ELM327 bridge serial settings
     uint32_t    elm327_baud = 38400;  ///< default baud for ELM327 bridge
+    std::string mock_script_path;     ///< YAML ECU script for scriptable mock
 
     /// Load settings from a JSON file. Returns empty string on success,
     /// error description on failure (file keeps defaults).
